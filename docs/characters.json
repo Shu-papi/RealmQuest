@@ -1,0 +1,176 @@
+{
+  "version": "0.1",
+  "frameSize": { "width": 32, "height": 32 },
+  "animationDefaults": {
+    "idle":   { "frames": 7, "fps": 6,  "loop": true },
+    "walk":   { "frames": 6, "fps": 10, "loop": true },
+    "attack": { "frames": 5, "fps": 12, "loop": false, "damageFrame": 2 },
+    "hurt":   { "frames": 2, "fps": 10, "loop": false },
+    "death":  { "frames": 4, "fps": 8,  "loop": false }
+  },
+  "characters": {
+    "warrior": {
+      "displayName": "Warrior",
+      "role": "tank",
+      "hp": 120,
+      "speed": 2,
+      "resource": { "type": "stamina", "max": 100, "regenPerSec": 10 },
+      "spritePrefix": "assets/characters/warrior_",
+      "skills": [
+        {
+          "id": "slash",
+          "name": "Slash",
+          "type": "melee",
+          "damage": 15,
+          "cooldown": 0.8,
+          "cost": 0,
+          "range": 1.5,
+          "description": "Basic melee sword swing."
+        },
+        {
+          "id": "shield_bash",
+          "name": "Shield Bash",
+          "type": "melee",
+          "damage": 10,
+          "cooldown": 5,
+          "cost": 20,
+          "range": 1.0,
+          "effects": [{ "type": "stun", "duration": 1 }],
+          "description": "Short-range hit that stuns the target."
+        },
+        {
+          "id": "war_cry",
+          "name": "War Cry",
+          "type": "buff",
+          "damage": 0,
+          "cooldown": 15,
+          "cost": 30,
+          "range": 0,
+          "effects": [{ "type": "damageBoost", "multiplier": 1.25, "duration": 6 }],
+          "description": "Increases damage for a short time."
+        },
+        {
+          "id": "whirlwind",
+          "name": "Whirlwind",
+          "type": "aoe",
+          "damage": 12,
+          "cooldown": 10,
+          "cost": 40,
+          "range": 2.0,
+          "description": "Spin attack hitting all adjacent enemies."
+        }
+      ]
+    },
+
+    "mage": {
+      "displayName": "Mage",
+      "role": "damage",
+      "hp": 70,
+      "speed": 3,
+      "resource": { "type": "mana", "max": 100, "regenPerSec": 6 },
+      "spritePrefix": "assets/characters/mage_",
+      "skills": [
+        {
+          "id": "arcane_bolt",
+          "name": "Arcane Bolt",
+          "type": "projectile",
+          "damage": 8,
+          "cooldown": 0.6,
+          "cost": 0,
+          "range": 6,
+          "projectile": { "sprite": "assets/projectiles/arcane_bolt.png", "speed": 9 },
+          "description": "Fast, weak basic projectile."
+        },
+        {
+          "id": "fireball",
+          "name": "Fireball",
+          "type": "projectile",
+          "damage": 25,
+          "cooldown": 3,
+          "cost": 10,
+          "range": 7,
+          "projectile": { "sprite": "assets/projectiles/fireball.png", "speed": 6, "explosionRadius": 1.0 },
+          "description": "Slow projectile that explodes on impact."
+        },
+        {
+          "id": "frost_nova",
+          "name": "Frost Nova",
+          "type": "aoe",
+          "damage": 15,
+          "cooldown": 8,
+          "cost": 25,
+          "range": 3,
+          "effects": [{ "type": "slow", "amount": 0.4, "duration": 3 }],
+          "description": "Area burst around the mage that slows enemies."
+        },
+        {
+          "id": "mana_shield",
+          "name": "Mana Shield",
+          "type": "buff",
+          "damage": 0,
+          "cooldown": 15,
+          "cost": 20,
+          "range": 0,
+          "effects": [{ "type": "shield", "absorb": 30, "duration": 10 }],
+          "description": "Absorbs incoming damage for a short time."
+        }
+      ]
+    },
+
+    "archer": {
+      "displayName": "Archer",
+      "role": "ranged",
+      "hp": 90,
+      "speed": 4,
+      "resource": { "type": "stamina", "max": 100, "regenPerSec": 12 },
+      "spritePrefix": "assets/characters/archer_",
+      "skills": [
+        {
+          "id": "quick_shot",
+          "name": "Quick Shot",
+          "type": "projectile",
+          "damage": 12,
+          "cooldown": 0.6,
+          "cost": 0,
+          "range": 8,
+          "projectile": { "sprite": "assets/projectiles/arrow.png", "speed": 12 },
+          "description": "Fast single arrow (basic attack)."
+        },
+        {
+          "id": "multi_shot",
+          "name": "Multi-Shot",
+          "type": "projectile",
+          "damage": 8,
+          "cooldown": 6,
+          "cost": 20,
+          "range": 6,
+          "projectile": { "sprite": "assets/projectiles/arrow.png", "speed": 12, "count": 3, "spreadDegrees": 15 },
+          "description": "Fires 3 arrows in a spread."
+        },
+        {
+          "id": "poison_arrow",
+          "name": "Poison Arrow",
+          "type": "projectile",
+          "damage": 6,
+          "cooldown": 10,
+          "cost": 25,
+          "range": 8,
+          "projectile": { "sprite": "assets/projectiles/poison_arrow.png", "speed": 11 },
+          "effects": [{ "type": "poison", "damagePerSec": 4, "duration": 3 }],
+          "description": "Applies poison damage over time."
+        },
+        {
+          "id": "dodge_roll",
+          "name": "Dodge Roll",
+          "type": "movement",
+          "damage": 0,
+          "cooldown": 4,
+          "cost": 15,
+          "range": 3,
+          "effects": [{ "type": "invulnerable", "duration": 0.4 }],
+          "description": "Quick roll that grants brief invulnerability."
+        }
+      ]
+    }
+  }
+}
