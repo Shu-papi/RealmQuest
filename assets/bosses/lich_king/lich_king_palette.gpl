@@ -1,0 +1,43 @@
+GIMP Palette
+Name: RealmQuest Lich King
+Columns: 4
+#
+# --- MARKER colours: the game turns these into glowing, animated parts ---
+255   0 255	MARKER eye
+255 102 255	MARKER eye_flare
+255 176 255	MARKER eye_burst
+  0 255 255	MARKER core
+  0 136 136	MARKER core_rim
+170 255 255	MARKER core_hi
+255 255   0	MARKER orb
+255 255 170	MARKER orb_shine
+# --- shared colours ---
+ 10   8  18	outline
+ 14  10  24	socket dark
+250 247 235	bone highlight
+222 216 196	bone
+168 160 158	bone shadow
+112 102 116	bone crack
+255 226 120	gold light
+224 172  44	gold
+150 100  34	gold dark
+128  92  60	wood
+ 80  58  44	wood dark
+# --- phase 1 colours ---
+226  70 120	P1 gem
+110  98 205	P1 cloak light
+ 70  60 150	P1 cloak
+ 44  38 104	P1 cloak dark
+ 26  22  66	P1 cloak darkest
+170 172 205	P1 steel light
+108 110 150	P1 steel
+ 62  60  92	P1 steel dark
+# --- phase 2 colours ---
+255 190  60	P2 gem
+196  62 112	P2 cloak light
+122  32  86	P2 cloak
+ 78  22  62	P2 cloak dark
+ 44  12  40	P2 cloak darkest
+206 150 170	P2 steel light
+134  86 112	P2 steel
+ 80  44  68	P2 steel dark
