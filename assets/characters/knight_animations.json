@@ -1,0 +1,156 @@
+{
+  "frame_size": [
+    75,
+    70
+  ],
+  "source_pivot_offset": [
+    32,
+    32
+  ],
+  "animations": {
+    "idle": {
+      "frames": [
+        "idle_0"
+      ],
+      "frame_duration_ms": 500,
+      "loop": true
+    },
+    "walk": {
+      "frames": [
+        "walk_0",
+        "walk_1",
+        "walk_2",
+        "walk_3"
+      ],
+      "frame_duration_ms": 120,
+      "loop": true
+    },
+    "attack": {
+      "frames": [
+        "attack_0",
+        "attack_1",
+        "attack_2"
+      ],
+      "frame_duration_ms": [
+        90,
+        110,
+        140
+      ],
+      "loop": false
+    },
+    "hurt": {
+      "frames": [
+        "hurt_0",
+        "hurt_1"
+      ],
+      "frame_duration_ms": [
+        80,
+        120
+      ],
+      "loop": false
+    },
+    "dead": {
+      "frames": [
+        "dead_0",
+        "dead_1",
+        "dead_2",
+        "dead_3"
+      ],
+      "frame_duration_ms": [
+        100,
+        100,
+        100,
+        600
+      ],
+      "loop": false,
+      "hold_last_frame": true
+    }
+  },
+  "spritesheet": "knight_spritesheet.png",
+  "frame_rects": {
+    "idle_0": {
+      "x": 0,
+      "y": 0,
+      "w": 75,
+      "h": 70
+    },
+    "walk_0": {
+      "x": 0,
+      "y": 70,
+      "w": 75,
+      "h": 70
+    },
+    "walk_1": {
+      "x": 75,
+      "y": 70,
+      "w": 75,
+      "h": 70
+    },
+    "walk_2": {
+      "x": 150,
+      "y": 70,
+      "w": 75,
+      "h": 70
+    },
+    "walk_3": {
+      "x": 225,
+      "y": 70,
+      "w": 75,
+      "h": 70
+    },
+    "attack_0": {
+      "x": 0,
+      "y": 140,
+      "w": 75,
+      "h": 70
+    },
+    "attack_1": {
+      "x": 75,
+      "y": 140,
+      "w": 75,
+      "h": 70
+    },
+    "attack_2": {
+      "x": 150,
+      "y": 140,
+      "w": 75,
+      "h": 70
+    },
+    "hurt_0": {
+      "x": 0,
+      "y": 210,
+      "w": 75,
+      "h": 70
+    },
+    "hurt_1": {
+      "x": 75,
+      "y": 210,
+      "w": 75,
+      "h": 70
+    },
+    "dead_0": {
+      "x": 0,
+      "y": 280,
+      "w": 75,
+      "h": 70
+    },
+    "dead_1": {
+      "x": 75,
+      "y": 280,
+      "w": 75,
+      "h": 70
+    },
+    "dead_2": {
+      "x": 150,
+      "y": 280,
+      "w": 75,
+      "h": 70
+    },
+    "dead_3": {
+      "x": 225,
+      "y": 280,
+      "w": 75,
+      "h": 70
+    }
+  }
+}
