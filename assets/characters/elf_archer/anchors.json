@@ -1,0 +1,376 @@
+{
+ "idle": {
+  "elf_archer_idle_01.png": [
+   59.5,
+   189
+  ],
+  "elf_archer_idle_02.png": [
+   59.5,
+   189
+  ],
+  "elf_archer_idle_03.png": [
+   59.4,
+   189
+  ],
+  "elf_archer_idle_04.png": [
+   59.5,
+   189
+  ],
+  "elf_archer_idle_05.png": [
+   59.4,
+   189
+  ],
+  "elf_archer_idle_06.png": [
+   59.3,
+   190
+  ],
+  "elf_archer_idle_07.png": [
+   59.0,
+   190
+  ],
+  "elf_archer_idle_08.png": [
+   59.9,
+   190
+  ],
+  "elf_archer_idle_09.png": [
+   59.8,
+   190
+  ],
+  "elf_archer_idle_10.png": [
+   59.8,
+   190
+  ],
+  "elf_archer_idle_11.png": [
+   59.9,
+   190
+  ],
+  "elf_archer_idle_12.png": [
+   59.9,
+   190
+  ],
+  "elf_archer_idle_13.png": [
+   59.0,
+   189
+  ],
+  "elf_archer_idle_14.png": [
+   59.0,
+   189
+  ],
+  "elf_archer_idle_15.png": [
+   59.2,
+   189
+  ],
+  "elf_archer_idle_16.png": [
+   59.4,
+   189
+  ]
+ },
+ "walk": {
+  "elf_archer_walk_01.png": [
+   60.3,
+   191
+  ],
+  "elf_archer_walk_02.png": [
+   58.4,
+   189
+  ],
+  "elf_archer_walk_03.png": [
+   57.4,
+   187
+  ],
+  "elf_archer_walk_04.png": [
+   58.2,
+   186
+  ],
+  "elf_archer_walk_05.png": [
+   58.0,
+   186
+  ],
+  "elf_archer_walk_06.png": [
+   57.9,
+   189
+  ],
+  "elf_archer_walk_07.png": [
+   62.2,
+   188
+  ],
+  "elf_archer_walk_08.png": [
+   64.9,
+   185
+  ],
+  "elf_archer_walk_09.png": [
+   65.5,
+   186
+  ],
+  "elf_archer_walk_10.png": [
+   61.4,
+   188
+  ],
+  "elf_archer_walk_11.png": [
+   60.0,
+   190
+  ],
+  "elf_archer_walk_12.png": [
+   59.8,
+   190
+  ],
+  "elf_archer_walk_13.png": [
+   57.5,
+   187
+  ],
+  "elf_archer_walk_14.png": [
+   58.2,
+   185
+  ],
+  "elf_archer_walk_15.png": [
+   58.0,
+   186
+  ],
+  "elf_archer_walk_16.png": [
+   57.9,
+   188
+  ]
+ },
+ "run": {
+  "elf_archer_run_01.png": [
+   81.6,
+   180
+  ],
+  "elf_archer_run_02.png": [
+   81.4,
+   183
+  ],
+  "elf_archer_run_03.png": [
+   82.0,
+   181
+  ],
+  "elf_archer_run_04.png": [
+   81.4,
+   175
+  ],
+  "elf_archer_run_05.png": [
+   80.2,
+   184
+  ],
+  "elf_archer_run_06.png": [
+   82.9,
+   182
+  ],
+  "elf_archer_run_07.png": [
+   80.6,
+   180
+  ],
+  "elf_archer_run_08.png": [
+   81.3,
+   181
+  ],
+  "elf_archer_run_09.png": [
+   80.8,
+   181
+  ],
+  "elf_archer_run_10.png": [
+   81.3,
+   180
+  ],
+  "elf_archer_run_11.png": [
+   82.7,
+   181
+  ],
+  "elf_archer_run_12.png": [
+   80.7,
+   185
+  ]
+ },
+ "quick_attack": {
+  "elf_yelena_quickshot_01.png": [
+   64.4,
+   195
+  ],
+  "elf_yelena_quickshot_02.png": [
+   64.3,
+   195
+  ],
+  "elf_yelena_quickshot_03.png": [
+   64.3,
+   195
+  ],
+  "elf_yelena_quickshot_04.png": [
+   63.2,
+   194
+  ],
+  "elf_yelena_quickshot_05.png": [
+   63.5,
+   194
+  ],
+  "elf_yelena_quickshot_06.png": [
+   65.5,
+   194
+  ],
+  "elf_yelena_quickshot_07.png": [
+   65.6,
+   191
+  ],
+  "elf_yelena_quickshot_08.png": [
+   65.8,
+   189
+  ],
+  "elf_yelena_quickshot_09.png": [
+   63.9,
+   187
+  ],
+  "elf_yelena_quickshot_10.png": [
+   63.5,
+   187
+  ],
+  "elf_yelena_quickshot_11.png": [
+   64.3,
+   187
+  ],
+  "elf_yelena_quickshot_12.png": [
+   65.5,
+   186
+  ],
+  "elf_yelena_quickshot_13.png": [
+   65.8,
+   185
+  ],
+  "elf_yelena_quickshot_14.png": [
+   64.9,
+   186
+  ],
+  "elf_yelena_quickshot_15.png": [
+   61.7,
+   187
+  ],
+  "elf_yelena_quickshot_16.png": [
+   60.8,
+   204
+  ],
+  "elf_yelena_quickshot_17.png": [
+   59.2,
+   208
+  ],
+  "elf_yelena_quickshot_18.png": [
+   58.0,
+   189
+  ],
+  "elf_yelena_quickshot_19.png": [
+   60.5,
+   191
+  ],
+  "elf_yelena_quickshot_20.png": [
+   62.3,
+   191
+  ],
+  "elf_yelena_quickshot_21.png": [
+   64.3,
+   195
+  ],
+  "elf_yelena_quickshot_22.png": [
+   64.3,
+   195
+  ]
+ },
+ "charge_attack": {
+  "elf_yelena_chargedshot_01.png": [
+   64.4,
+   195
+  ],
+  "elf_yelena_chargedshot_02.png": [
+   64.4,
+   195
+  ],
+  "elf_yelena_chargedshot_03.png": [
+   64.0,
+   197
+  ],
+  "elf_yelena_chargedshot_04.png": [
+   63.9,
+   198
+  ],
+  "elf_yelena_chargedshot_05.png": [
+   64.0,
+   198
+  ],
+  "elf_yelena_chargedshot_06.png": [
+   66.8,
+   194
+  ],
+  "elf_yelena_chargedshot_07.png": [
+   68.8,
+   188
+  ],
+  "elf_yelena_chargedshot_08.png": [
+   68.1,
+   187
+  ],
+  "elf_yelena_chargedshot_09.png": [
+   68.9,
+   186
+  ],
+  "elf_yelena_chargedshot_10.png": [
+   69.5,
+   185
+  ],
+  "elf_yelena_chargedshot_11.png": [
+   69.4,
+   185
+  ],
+  "elf_yelena_chargedshot_12.png": [
+   69.4,
+   185
+  ],
+  "elf_yelena_chargedshot_13.png": [
+   70.7,
+   229
+  ],
+  "elf_yelena_chargedshot_14.png": [
+   71.1,
+   260
+  ],
+  "elf_yelena_chargedshot_15.png": [
+   70.3,
+   278
+  ],
+  "elf_yelena_chargedshot_16.png": [
+   69.0,
+   292
+  ],
+  "elf_yelena_chargedshot_17.png": [
+   67.9,
+   247
+  ],
+  "elf_yelena_chargedshot_18.png": [
+   65.1,
+   187
+  ],
+  "elf_yelena_chargedshot_19.png": [
+   61.8,
+   190
+  ],
+  "elf_yelena_chargedshot_20.png": [
+   59.1,
+   192
+  ],
+  "elf_yelena_chargedshot_21.png": [
+   61.8,
+   192
+  ],
+  "elf_yelena_chargedshot_22.png": [
+   58.3,
+   192
+  ],
+  "elf_yelena_chargedshot_23.png": [
+   57.9,
+   192
+  ],
+  "elf_yelena_chargedshot_24.png": [
+   58.2,
+   192
+  ],
+  "elf_yelena_chargedshot_25.png": [
+   58.2,
+   192
+  ]
+ }
+}
