@@ -1,0 +1,4 @@
+# Only needed for tools/build_anchors.py (not at game runtime)
+numpy
+scipy
+pillow
