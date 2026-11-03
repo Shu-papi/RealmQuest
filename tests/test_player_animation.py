@@ -23,6 +23,15 @@ BOUNDS = (0, 0, 960, 640)
 IDLE_INPUT = {"move": (0, 0), "aim": (480, 0), "attack": False}
 
 
+def _attack_seconds():
+    with open(os.path.join(ASSET_DIR, "knight_animations.json")) as fh:
+        d = json.load(fh)["animations"]["attack"]["frame_duration_ms"]
+    return sum(d) / 1000.0 + 0.05                    # + a little slack for frame stepping
+
+
+ATTACK_SECONDS = _attack_seconds()
+
+
 class Dummy:
     """Minimal boss target: same attributes player.py needs."""
     x, y, radius = 480.0, 460.0, 20
@@ -62,7 +71,7 @@ def test_manifest_is_consistent():
     with open(os.path.join(ASSET_DIR, "knight_animations.json")) as fh:
         data = json.load(fh)
     sheet = pygame.image.load(os.path.join(ASSET_DIR, data["spritesheet"]))
-    assert {"idle", "walk", "attack", "hurt", "dead"} <= set(data["animations"])
+    assert {"idle", "run", "attack", "hurt", "dead"} <= set(data["animations"])
     for anim in data["animations"].values():
         for f in anim["frames"]:
             r = data["frame_rects"][f]
@@ -72,8 +81,35 @@ def test_manifest_is_consistent():
         assert not isinstance(durations, list) or len(durations) == len(anim["frames"])
 
 
+def test_run_and_attack_frames_have_their_own_pivots():
+    with open(os.path.join(ASSET_DIR, "knight_animations.json")) as fh:
+        data = json.load(fh)
+    assert len(data["animations"]["run"]["frames"]) == 16
+    assert len(data["animations"]["attack"]["frames"]) == 22
+    for anim in ("run", "attack"):
+        for f in data["animations"][anim]["frames"]:
+            r = data["frame_rects"][f]
+            px, py = r["pivot"]
+            assert 0 <= px < r["w"] and -60 < py < r["h"] + 60, f    # pivot is near its frame
+
+
+def test_imported_frames_stand_on_the_players_feet():
+    """Feet of a planted run / attack frame land where the old knight's feet did (pivot + 19)."""
+    p, _ = make()
+    for name, frame_index in (("run", 0), ("run", 3), ("attack", 0), ("attack", 20)):
+        p.anim.one_shot = None
+        p.anim._start(name)
+        p.anim.index = frame_index
+        for flipped in (False, True):
+            img, (px, py) = p.anim.current(flipped)
+            bottom = pygame.mask.from_surface(img).get_bounding_rects()
+            lowest = max(r.bottom for r in bottom) - 1
+            assert 17 <= lowest - py <= 21, (name, frame_index, flipped, lowest - py)
+            assert 0 <= px < img.get_width()
+
+
 def test_every_behaviour_has_its_own_strip():
-    for name in ("idle", "walk", "attack", "hurt", "dead"):
+    for name in ("idle", "run", "attack", "hurt", "dead"):
         assert os.path.exists(os.path.join(ASSET_DIR, "animations", f"knight_{name}.png")), name
 
 
@@ -84,23 +120,23 @@ def test_only_warrior_has_sprites():
     assert Player(0, 0, "archer").anim is None
 
 
-def test_idle_and_walk():
+def test_idle_and_run():
     p, boss = make()
     step(p, boss, 0.1)
     assert p.anim.name == "idle"
     step(p, boss, 0.3, move=(1, 0))
-    assert p.anim.name == "walk"
+    assert p.anim.name == "run"
     step(p, boss, 0.3)
     assert p.anim.name == "idle"
 
 
-def test_walk_cycles_through_all_frames():
+def test_run_cycles_through_all_frames():
     p, boss = make()
     seen = set()
     for _ in range(60):
         step(p, boss, 1 / 60, move=(1, 0))
         seen.add(p.anim.index)
-    assert seen == {0, 1, 2, 3}
+    assert seen == set(range(16))
 
 
 def test_attack_plays_once_then_returns():
@@ -110,8 +146,22 @@ def test_attack_plays_once_then_returns():
     assert boss.target.hp < 1000                      # gameplay unchanged: damage lands on click
     step(p, boss, 0.1)
     assert p.anim.name == "attack" and p.anim.index >= 1
-    step(p, boss, 0.4)
+    step(p, boss, ATTACK_SECONDS)                     # whole swing (22 frames) has played out
     assert p.anim.name == "idle" and p.anim.one_shot is None
+
+
+def test_swing_finishes_before_the_next_attack_is_allowed():
+    assert ATTACK_SECONDS <= Player(0, 0, "warrior").stats["cooldown"]
+
+
+def test_sprite_does_not_mirror_mid_swing():
+    p, boss = make()
+    step(p, boss, 1 / 60, attack=True, aim=(900, 520))
+    assert p.anim.name == "attack" and not p.flipped
+    step(p, boss, 0.1, aim=(100, 520))                # mouse crosses over during the swing
+    assert p.anim.name == "attack" and not p.flipped
+    step(p, boss, ATTACK_SECONDS, aim=(100, 520))
+    assert p.anim.name == "idle" and p.flipped        # free to turn again afterwards
 
 
 def test_hurt_reaction_and_priority():
@@ -168,10 +218,10 @@ def test_draw_puts_pixels_on_screen():
     p, boss = make()
     screen = pygame.Surface((960, 640))
     screen.fill((0, 0, 0))
-    for name in ("idle", "walk", "attack", "hurt", "dead"):
+    for name in ("idle", "run", "attack", "hurt", "dead"):
         screen.fill((0, 0, 0))
         p.anim.one_shot = None if name != "dead" else "dead"
-        p.anim.base = "walk" if name == "walk" else "idle"
+        p.anim.base = "run" if name == "run" else "idle"
         p.anim._start(name)
         p.invuln = 0.0
         p.draw(screen)

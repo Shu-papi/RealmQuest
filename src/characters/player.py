@@ -42,10 +42,14 @@ ANIM_PRIORITY = {"attack": 1, "hurt": 2, "dead": 3}
 class SpriteAnimator:
     """Plays the animations described by assets/characters/<name>_animations.json.
 
-    A looping *base* animation (idle / walk) runs underneath; one-shot animations
+    A looping *base* animation (idle / run) runs underneath; one-shot animations
     (attack / hurt / dead) are layered on top with play() and fall back to the base
     when they finish. Frames are looked up by name, so artists can add or retime
     frames in the json without touching code.
+
+    Frames may be different sizes: a frame_rects entry can carry its own "pivot"
+    ([x, y] inside that frame, the pixel that sits on Player.x / .y). Entries without
+    one use the default source_pivot_offset.
     """
 
     def __init__(self, name, asset_dir=ASSET_DIR):
@@ -58,12 +62,15 @@ class SpriteAnimator:
             pass                               # headless / tests: keep the raw surface
         self.w, self.h = self.data["frame_size"]
         px, py = self.data["source_pivot_offset"]      # cell pixel that sits on Player.x / .y
-        self.pivot = {False: (px, py), True: (self.w - 1 - px, py)}
+        self.pivot = {False: (px, py), True: (self.w - 1 - px, py)}     # default pivot
         self.frames = {}
+        self.pivots = {}            # frame name -> {False: (x, y), True: (x, y) when mirrored}
         for fname, r in self.data["frame_rects"].items():
             img = sheet.subsurface(pygame.Rect(r["x"], r["y"], r["w"], r["h"])).copy()
             self.frames[fname] = (img, pygame.transform.flip(img, True, False))
-        self.base = "idle"
+            fx, fy = r.get("pivot", (px, py))
+            self.pivots[fname] = {False: (fx, fy), True: (r["w"] - 1 - fx, fy)}
+        self.base = "idle"          # the looping idle / run animation under any one-shot
         self.name = "idle"
         self.index = 0
         self.timer = 0.0
@@ -72,7 +79,7 @@ class SpriteAnimator:
 
     # ---- control ---------------------------------------------------------------------
     def set_base(self, name):
-        """Switch the looping idle/walk animation (no-op while a one-shot is playing)."""
+        """Switch the looping idle/run animation (no-op while a one-shot is playing)."""
         if name != self.base:
             self.base = name
             if self.one_shot is None:
@@ -112,7 +119,7 @@ class SpriteAnimator:
             elif anim.get("hold_last_frame"):
                 self.finished = True
                 return
-            else:                                   # one-shot done -> back to idle/walk
+            else:                                   # one-shot done -> back to idle/run
                 self.one_shot = None
                 self._start(self.base)
                 return
@@ -120,7 +127,7 @@ class SpriteAnimator:
     def current(self, flipped=False):
         """(surface, pivot) for the frame to draw right now."""
         fname = self.data["animations"][self.name]["frames"][self.index]
-        return self.frames[fname][flipped], self.pivot[flipped]
+        return self.frames[fname][flipped], self.pivots[fname][flipped]
 
 
 class Bolt:
@@ -228,8 +235,9 @@ class Player:
         d = math.hypot(ax - self.x, ay - self.y)
         if d > 1:
             self.facing = ((ax - self.x) / d, (ay - self.y) / d)
-        if abs(self.facing[0]) > 0.15:         # dead zone so aiming straight up/down doesn't flicker
-            self.flipped = self.facing[0] < 0
+        swinging = self.anim is not None and self.anim.one_shot == "attack"
+        if abs(self.facing[0]) > 0.15 and not swinging:   # dead zone so aiming straight up/down
+            self.flipped = self.facing[0] < 0             # doesn't flicker; locked mid-swing
 
         if inp["attack"] and self.attack_cd <= 0:
             self.attack_time = 0.18
@@ -243,7 +251,7 @@ class Player:
         self.bolts = [b for b in self.bolts if b.alive]
 
         if self.anim:
-            self.anim.set_base("walk" if length > 0 else "idle")
+            self.anim.set_base("run" if length > 0 else "idle")
             self.anim.update(dt)
 
     def _attack(self, boss):

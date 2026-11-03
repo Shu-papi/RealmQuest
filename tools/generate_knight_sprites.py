@@ -5,9 +5,13 @@ Run from the repo root:
     python tools/generate_knight_sprites.py
 
 Input : assets/characters/knight_idle.png        (the 48x48 knight - never modified)
-Output: assets/characters/knight_spritesheet.png (all frames, 75x70 cells)
-        assets/characters/knight_animations.json (frame rects, timings, loop flags)
+Output: assets/characters/knight_spritesheet.png (all frames)
+        assets/characters/knight_animations.json (frame rects, pivots, timings, loop flags)
         assets/characters/animations/knight_<behaviour>.png (one strip per behaviour)
+
+idle / hurt / dead are drawn here, in 75x70 cells. run and attack are NOT drawn here: they come
+from the artist-made frame grids in assets/characters/source/ via tools/import_knight_sheets.py
+(scale, anchor and timings are tuned at the top of that file).
 
 How it works: the idle knight is cut into parts (plume, head, torso, shield, legs,
 sword-arm). Each frame is a "pose" that moves/tints those parts, and for the attack
@@ -19,6 +23,8 @@ import math
 import os
 
 from PIL import Image
+
+import import_knight_sheets
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHAR_DIR = os.path.join(ROOT, "assets", "characters")
@@ -263,28 +269,7 @@ def _():
     return build_figure(body=(0, 1))
 
 
-# --- walk (feet alternate, body bobs, shield and plume lag a little) ----------------
-@frame("walk_0")
-def _():
-    return build_figure(leg_l=(0, -3), head=(0, 0), plume=(1, 0))
-
-
-@frame("walk_1")
-def _():
-    return build_figure(body=(0, 1), shield=(0, -1))
-
-
-@frame("walk_2")
-def _():
-    return build_figure(leg_r=(0, -3), plume=(-1, 0), shield=(0, 1))
-
-
-@frame("walk_3")
-def _():
-    return build_figure(body=(0, 1), shield=(0, -1))
-
-
-# --- attack (wind-up -> slash -> follow-through) --------------------------------------
+# --- sword-arm helper (the death poses reuse it; run + attack art is imported, see below) ---
 SHOULDER = (35, 22)
 
 
@@ -304,26 +289,6 @@ def _swing(fig, body, hand, theta, trail=None, flash=False):
     put(layer, shape, 0, 0, outline=True)
     fig.alpha_composite(layer)
     return fig
-
-
-@frame("attack_0")
-def _():
-    fig = build_figure(body=(-1, 0), keep_arm=False, leg_l=(-1, 0), leg_r=(0, 0), head=(-1, 0))
-    return _swing(fig, (-1, 0), (39, 16), -104)
-
-
-@frame("attack_1")
-def _():
-    fig = build_figure(body=(2, 1), keep_arm=False, shield=(-1, 0), leg_l=(-2, 0), leg_r=(2, 0),
-                       head=(1, 0), plume=(1, 0))
-    return _swing(fig, (2, 1), (39, 24), 38, trail=(21, -75, 35, 5.5))
-
-
-@frame("attack_2")
-def _():
-    fig = build_figure(body=(1, 2), keep_arm=False, shield=(-1, 0), leg_l=(-1, 0), leg_r=(1, 0),
-                       head=(1, 1))
-    return _swing(fig, (1, 2), (40, 28), 58, trail=(21, 10, 58, 3.0))
 
 
 # --- hurt (red flash, knocked back, impact sparkle) ---------------------------------------
@@ -410,21 +375,23 @@ def _():
 
 
 # ------------------------------------------------------------------------- manifest
+# idle / hurt / dead are generated above; run / attack are imported (import_knight_sheets.py).
 ANIMATIONS = {
     "idle":   {"frames": ["idle_0", "idle_1"], "frame_duration_ms": 500, "loop": True},
-    "walk":   {"frames": ["walk_0", "walk_1", "walk_2", "walk_3"], "frame_duration_ms": 120, "loop": True},
-    "attack": {"frames": ["attack_0", "attack_1", "attack_2"], "frame_duration_ms": [70, 90, 140], "loop": False},
     "hurt":   {"frames": ["hurt_0", "hurt_1"], "frame_duration_ms": [80, 120], "loop": False},
     "dead":   {"frames": ["dead_0", "dead_1", "dead_2", "dead_3"], "frame_duration_ms": [100, 100, 100, 600],
                "loop": False, "hold_last_frame": True},
 }
+ORDER = ["idle", "run", "attack", "hurt", "dead"]      # order of the animations in the json
+SHEET_W = 512                                          # imported frames are packed this wide
 
 
 def main():
     os.makedirs(ANIM_DIR, exist_ok=True)
     rows = list(ANIMATIONS.items())
-    sheet = Image.new("RGBA", (FW * 4, FH * len(rows)), (0, 0, 0, 0))
-    rects, images = {}, {}
+    base_h = FH * len(rows)
+    sheet = Image.new("RGBA", (SHEET_W, base_h), (0, 0, 0, 0))
+    rects, images, strips = {}, {}, {}
     for r, (anim, spec) in enumerate(rows):
         strip = Image.new("RGBA", (FW * len(spec["frames"]), FH), (0, 0, 0, 0))
         for c, name in enumerate(spec["frames"]):
@@ -433,17 +400,31 @@ def main():
             sheet.alpha_composite(img, (c * FW, r * FH))
             strip.alpha_composite(img, (c * FW, 0))
             rects[name] = {"x": c * FW, "y": r * FH, "w": FW, "h": FH}
+        strips[anim] = strip
+
+    # run + attack: the artist-made grids, scaled to the 48px knight and packed under the rest
+    feet_below_pivot = OY + idle.getbbox()[3] - 1 - PIVOT[1]       # idle sprite's feet vs pivot
+    part, imp_rects, imp_anims, imp_strips = import_knight_sheets.build(SHEET_W, base_h, feet_below_pivot)
+    full = Image.new("RGBA", (SHEET_W, base_h + part.height), (0, 0, 0, 0))
+    full.alpha_composite(sheet, (0, 0))
+    full.alpha_composite(part, (0, base_h))
+    rects.update(imp_rects)
+    strips.update(imp_strips)
+    animations = {**ANIMATIONS, **imp_anims}
+
+    for anim, strip in strips.items():
         strip.save(os.path.join(ANIM_DIR, f"knight_{anim}.png"))
-    sheet.save(os.path.join(CHAR_DIR, "knight_spritesheet.png"))
+    full.save(os.path.join(CHAR_DIR, "knight_spritesheet.png"))
     with open(os.path.join(CHAR_DIR, "knight_animations.json"), "w") as fh:
         json.dump({
-            "frame_size": [FW, FH],
+            "frame_size": [FW, FH],          # default cell + default pivot (idle / hurt / dead)
             "source_pivot_offset": list(PIVOT),
-            "animations": ANIMATIONS,
+            # frames with their own "pivot" (run / attack) are trimmed, so they carry theirs
+            "animations": {k: animations[k] for k in ORDER},
             "spritesheet": "knight_spritesheet.png",
             "frame_rects": rects,
         }, fh, indent=2)
-    print(f"wrote {len(images)} frames")
+    print(f"wrote {len(rects)} frames ({len(images)} drawn, {len(imp_rects)} imported)")
     return images
 
 
