@@ -34,9 +34,12 @@ def main():
     pygame.init()
     print(f"Checking {boss} sprites in {folder}\n")
 
-    names = list(getattr(art, "BODY_FILES", {}).values())
-    if hasattr(art, "STAFF_FILE"):
-        names.append(art.STAFF_FILE)
+    if hasattr(art, "uses_strips") and art.uses_strips(folder):
+        names = list(art.STRIP_FILES.values())               # pose-strip format
+    else:
+        names = list(getattr(art, "BODY_FILES", {}).values())   # classic format
+        if hasattr(art, "STAFF_FILE"):
+            names.append(art.STAFF_FILE)
     for name in names:
         path = os.path.join(folder, name)
         if os.path.exists(path):

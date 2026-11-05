@@ -12,13 +12,17 @@ CONTROLS
     Left click / SPACE  sword swing
     SHIFT               dash (you can't be hurt while dashing)
     R                   restart
-    P                   (testing) skip the boss straight to phase 2
+    P                   (testing) jump the boss to the next phase (press twice: phase 2, then 3)
     G                   (testing) god mode on/off
     H                   (testing) show hitboxes
+    M                   mute / unmute the sound
     ESC                 quit
 
 The real player class will be written by another team. The boss only needs
 player.rect and player.take_damage(amount), so the Player below is just a stand-in.
+
+OPTIONAL: if the player has apply_status(name, seconds), bosses use it for "root" (can't move)
+and "slow" (half speed): the Lich King's Grasping Hands root you. The stand-in implements it.
 """
 import math
 import os
@@ -31,6 +35,7 @@ SRC_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
+import audio  # noqa: E402
 from bosses import get_boss, list_bosses  # noqa: E402
 
 W, H = 960, 640
@@ -70,12 +75,21 @@ class Player:
         self.swing_time = 0.0
         self.swing_cd = 0.0
         self.facing = (0.0, -1.0)
+        self.status = {}                      # e.g. {"root": 0.8}: seconds left of each status effect
+
+    def apply_status(self, name, seconds):
+        """Boss attacks call this to root / slow the player. Returns False if the player is immune."""
+        if self.god or self.hp <= 0 or self.dash_time > 0:
+            return False
+        self.status[name] = max(self.status.get(name, 0.0), seconds)
+        return True
 
     def take_damage(self, amount):
         if self.god or self.hp <= 0 or self.invuln > 0 or self.dash_time > 0:
             return 0
         self.hp = max(0, self.hp - amount)
         self.invuln = 0.7
+        audio.play("player_hurt", self.x)
         return amount
 
     def update(self, dt, inp, bounds, boss):
@@ -84,22 +98,29 @@ class Player:
         self.swing_time = max(0.0, self.swing_time - dt)
         self.swing_cd = max(0.0, self.swing_cd - dt)
 
+        self.status = {k: v - dt for k, v in self.status.items() if v - dt > 0}
+        rooted = "root" in self.status
+        speed = PLAYER_SPEED * (0.5 if "slow" in self.status else 1.0)
+
         mx, my = inp["move"]
         length = math.hypot(mx, my)
         if length > 0:
             mx, my = mx / length, my / length
+        if rooted:                           # held by bony hands: no walking, no dashing
+            mx = my = 0.0
 
         if self.dash_time > 0:
             self.dash_time -= dt
             self.x += self.dash_dir[0] * DASH_SPEED * dt
             self.y += self.dash_dir[1] * DASH_SPEED * dt
         else:
-            self.x += mx * PLAYER_SPEED * dt
-            self.y += my * PLAYER_SPEED * dt
+            self.x += mx * speed * dt
+            self.y += my * speed * dt
             if inp["dash"] and self.dash_cd <= 0 and length > 0:
                 self.dash_time = DASH_TIME
                 self.dash_cd = DASH_COOLDOWN
                 self.dash_dir = (mx, my)
+                audio.play("player_dash", self.x)
 
         left, top, right, bottom = bounds
         self.x = max(left + PLAYER_RADIUS, min(right - PLAYER_RADIUS, self.x))
@@ -114,6 +135,7 @@ class Player:
         if inp["attack"] and self.swing_cd <= 0 and self.dash_time <= 0:
             self.swing_time = 0.18
             self.swing_cd = SWORD_COOLDOWN
+            audio.play("player_swing", self.x)
             self._sword_hit(boss)
 
     def _sword_hit(self, boss):
@@ -135,6 +157,14 @@ class Player:
             return
         color = (180, 220, 255) if self.dash_time > 0 else (66, 150, 240)
         pygame.draw.ellipse(surface, (18, 15, 28), (cx - 14, cy + 10, 28, 10))
+        if "root" in self.status:                          # bone fingers clamped round the ankles
+            for k in range(6):
+                ang = k * math.tau / 6
+                bx, by = cx + math.cos(ang) * 17, cy + 12 + math.sin(ang) * 7
+                pygame.draw.line(surface, (33, 29, 46), (bx, by), (cx + math.cos(ang) * 6, cy + 12 + math.sin(ang) * 3), 5)
+                pygame.draw.line(surface, (222, 216, 196), (bx, by), (cx + math.cos(ang) * 6, cy + 12 + math.sin(ang) * 3), 3)
+        if "slow" in self.status:
+            pygame.draw.circle(surface, (127, 119, 221), (cx, cy), PLAYER_RADIUS + 6, 2)
         pygame.draw.circle(surface, color, (cx, cy), PLAYER_RADIUS)
         pygame.draw.circle(surface, (12, 68, 124), (cx, cy), PLAYER_RADIUS, 2)
         fx, fy = self.facing
@@ -151,7 +181,7 @@ class Player:
 
 def empty_input():
     return {"move": (0, 0), "aim": (W // 2, H // 2), "attack": False, "dash": False,
-            "restart": False, "phase2": False, "god": False, "hitboxes": False}
+            "restart": False, "phase2": False, "god": False, "hitboxes": False, "mute": False}
 
 
 class Game:
@@ -168,8 +198,9 @@ class Game:
         self.reset()
 
     def reset(self):
+        audio.stop_all(fade=0.2)                            # (a restarted fight starts from silence)
         self.player = Player(480, 520)
-        self.boss = get_boss(self.boss_name, 480, 230)
+        self.boss = get_boss(self.boss_name, 480, 268)
         self.result = None      # None, "victory" or "defeat"
 
     def update(self, dt, inp):
@@ -180,16 +211,24 @@ class Game:
             self.player.god = not self.player.god
         if inp["hitboxes"]:
             self.show_hitboxes = not self.show_hitboxes
-        if inp["phase2"] and self.boss.phase == 1:
-            self.boss.debug_set_hp_percent(0.5)
+        if inp.get("mute"):
+            audio.toggle_muted()
+        if inp["phase2"]:                                   # P: jump to the next phase
+            if self.boss.phase == 1:
+                self.boss.debug_set_hp_percent(0.5)
+            elif self.boss.phase == 2 and hasattr(self.boss, "PHASE_3_HP"):
+                self.boss.debug_set_hp_percent(self.boss.PHASE_3_HP)
 
         if self.result is None:
             self.player.update(dt, inp, BOUNDS, self.boss)
         self.boss.update(dt, self.player, BOUNDS)
+        audio.update(dt)
 
         if self.result is None:
             if self.player.hp <= 0:
                 self.result = "defeat"
+                audio.stop_music(fade=0.8)                  # (the Lich King's victory sting is played by the boss itself)
+                audio.play("defeat_sting")
             elif self.boss.is_defeated():
                 self.result = "victory"
 
@@ -229,8 +268,10 @@ class Game:
         if boss.clock < 3.5 and self.result is None:
             self.text(screen, self.small_font, boss.get_intro(), TEXT, (W // 2, 84))
         elif boss.state == "transition":
-            self.text(screen, self.small_font, f"{boss.name} unleashes its true power!",
-                      (226, 75, 74), (W // 2, 84))
+            message = (f"{boss.name} is ENRAGED!" if boss.phase >= 3
+                       else f"{boss.name} unleashes its true power!")
+            self.text(screen, self.small_font, message, (255, 170, 70) if boss.phase >= 3 else (226, 75, 74),
+                      (W // 2, 84))
 
         bar_w = 200
         pygame.draw.rect(screen, (30, 26, 44), (20, H - 32, bar_w + 6, 20))
@@ -243,7 +284,7 @@ class Game:
 
         self.text(screen, self.small_font,
                   "WASD move | Mouse aim | Click/Space sword | Shift dash | "
-                  "P phase 2 | G god | H hitboxes | R restart",
+                  "P next phase | G god | H hitboxes | M mute | R restart",
                   (150, 148, 170), (W // 2 + 120, H - 20))
 
         if self.result is not None:
@@ -279,9 +320,20 @@ def read_input(events):
                 inp["god"] = True
             elif e.key == pygame.K_h:
                 inp["hitboxes"] = True
+            elif e.key == pygame.K_m:
+                inp["mute"] = True
         elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             inp["attack"] = True
     return inp
+
+
+def load_settings():
+    """The player's saved volume sliders (if the UI package is there), so the arena respects them."""
+    try:
+        from ui.settings_data import Settings
+        return Settings.load()
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def main():
@@ -295,6 +347,7 @@ def main():
         return
 
     pygame.init()
+    audio.init(load_settings())                              # no sound card? it simply stays silent
     screen = pygame.display.set_mode((W, H))
     pygame.display.set_caption(f"RealmQuest - {name} boss test")
     clock = pygame.time.Clock()
@@ -311,6 +364,7 @@ def main():
         game.draw(screen)
         pygame.display.flip()
 
+    audio.shutdown()
     pygame.quit()
 
 

@@ -4,138 +4,129 @@ These PNG files ARE the Lich King. Change a PNG, run the game, and he looks diff
 No Python needed.
 
 ```
-python src/bosses/dev/check_sprites.py lich_king               # checks your files, explains any mistakes
-python src/bosses/lich_king/preview.py --live    # animated preview of every pose (ESC quits)
-python src/bosses/dev/arena.py                             # the real fight
+python src/bosses/dev/check_sprites.py lich_king     # checks your files, explains any mistakes
+python src/bosses/lich_king/preview.py               # saves a picture of every pose (lich_king_preview.png)
+python src/bosses/lich_king/preview.py --live        # animated window (ESC quits)
+python src/bosses/dev/arena.py                       # the real fight (press P to jump to phase 2)
 ```
 
----
+## What he looks like
 
-## Part 1: Making sprites yourself (beginner guide)
+* **Phase 1, the Frozen Sovereign:** royal violet cloak, spiked gold crown, a tall dark collar, round steel
+  pauldrons with curved bone horns, a ribcage cage holding his glowing soul-core, gold chains, a skull belt buckle,
+  chained cuffs, a soul-flame floating over his left hand and a skull-and-orb staff in his right.
+* **Phase 2, the Hellfire Tyrant:** crimson cloak, blackened steel, taller horns, a burning crown, glowing magma
+  cracks and huge torn bat-wings.
+* **Phase 3, the Last Stand (below 25% HP):** no new art needed. The phase 2 art turns white-hot (the colours blend
+  towards a hot palette), everything animates faster, more souls and embers appear, and ghostly afterimages trail
+  behind him. Phase 3 is the same two PNG files as phase 2.
+* **Live effects (code, no art needed):** aura, rising embers, three (five in phase 2) soul-skulls orbiting him,
+  a turning rune circle on the floor, soul-wisps drifting from his hem, energy motes streaming into his
+  core while he winds up an attack, shockwaves when he transforms and a soul-burst when he dies.
 
-### 1. Pick a tool
+## The poses (22 frames per phase)
 
-You need a **pixel art editor** (not Photoshop-style painting tools: they blur things).
+| Pose | Frames | When it plays |
+|------|--------|---------------|
+| `idle`    | 4 | floating about (the loop speeds with the frame count) |
+| `volley`  | 3 | shadow volley wind-up: hands gather energy, then fling wide |
+| `drain`   | 2 | life drain wind-up: arms press down at the ground |
+| `summon`  | 3 | calling the army: staff and arm thrust to the sky |
+| `recover` | 2 | catching his breath after an attack |
+| `hurt`    | 1 | flinch when hit (also used while he dies) |
+| `roar`    | 2 | the phase transitions |
+| `nova`    | 3 | Bone Nova wind-up: he coils in on himself, clenches, then explodes outward |
+| `grasp`   | 2 | Grasping Hands: arms out and down, claws spread |
 
-| Tool | Cost | Notes |
-|------|------|-------|
-| **Piskel** | Free | Runs in your browser, nothing to install. Easiest start |
-| **Pixelorama** | Free, open source | Full desktop editor with layers and animation |
-| **LibreSprite** | Free, open source | Looks and feels like Aseprite |
-| **PixiEditor** | Free, open source | Modern interface |
-| **Aseprite** | Paid (about $20 one-time) | The industry favourite. Buy it from the official site. Avoid sites offering "free full version" downloads |
+A wind-up pose is spread over the whole wind-up, so the frames match the warning the player sees.
+**Only `idle` is required.** A pose that is missing from the art simply falls back to `idle`.
 
-Any of them works. Everything below is the same in all of them.
-
-### 2. Set up
-
-1. **Open a starter file instead of a blank one.** Open `body_phase1_a.png` and paint over
-   it. It is already the right size, has the right colours, and shows you how a finished
-   sprite is built.
-2. **New sprite from scratch?** Make the canvas **54 x 61 pixels** with a **transparent**
-   background. It is tiny on purpose: the game shows each pixel as a 4x4 block.
-3. **Load the palette** `lich_king_palette.gpl` (in this folder). It contains our colours
-   and the special marker colours (Part 2). Palette menu -> Load / Import.
-4. **Turn OFF anti-aliasing / soft brushes.** Use the plain 1-pixel pencil. Use "pixel
-   perfect" mode if your editor has it (it removes doubled-up corners).
-5. Zoom in a lot (800%+). Never use blur, smudge, gradient or resize tools.
-
-### 3. Drawing order that works
-
-1. **Silhouette first.** Fill the whole shape with one flat colour. Squint: can you tell
-   it is a king with a crown, spiked shoulders and a staff? A boss must read as a strong
-   shape before any detail exists.
-2. **Flat colours.** Bone, gold, cloak, steel, each in its main colour.
-3. **Shading.** Use 3 tones per material (light / main / dark). Pick ONE light direction
-   (from the top) and keep it. Light on top edges, shadow underneath.
-4. **Outline.** A 1-pixel dark outline around the whole figure (`outline` colour in the
-   palette) makes him pop off the floor.
-5. **Details last:** cracks, rivets, teeth, trim.
-
-Tips that make sprites look professional:
-- **Fewer colours is better.** 16 to 32 total. Reuse palette colours instead of inventing new ones.
-- **Draw HALF and mirror it.** Use your editor's symmetry / mirror mode for the body, then
-  add the asymmetric bits (staff hand, flame hand) by hand.
-- **Chunky beats detailed.** At 4x size, a single pixel is a big square. Simple, bold
-  shapes look stronger than lots of tiny detail.
-- **Big shapes, sharp points.** Spikes, horns, a tall collar and a wide, ragged cloak all
-  make a boss feel dangerous.
-- **Avoid "jaggies"**: lines should step evenly (2-2-2 or 3-3-3), not randomly.
-
-### 4. The two-frame cloak flutter
-
-The cloak animates by swapping two images. Make `body_phase1_b.png` by copying
-`body_phase1_a.png` and changing **only the bottom hem** (shift the ragged points).
-Same for phase 2. Keep everything else identical or he will "jump".
-
-### 5. Save, check, look
-
-1. Export as **PNG at 100% size** (never scaled), with a transparent background.
-2. `python src/bosses/dev/check_sprites.py lich_king` fixes 90% of problems before you even open the game.
-3. `python src/bosses/lich_king/preview.py --live` shows every pose animated.
-4. Keep your editor's own file (`.aseprite`, `.pixil`, ...) in a `source/` folder here
-   so layers are not lost. Commit it to GitHub too.
-
-### 6. Where to learn more
-
-Search for: **Lospec pixel art tutorials**, **Slynyrd Pixelblog**, **Pedro Medeiros
-(saint11) pixel art tutorials**, and the book **Pixel Logic** by Michafrar. Lospec also has
-thousands of ready-made palettes to try.
-
----
-
-## Part 2: Technical spec
-
-### Files
+## The files
 
 | File | Required | What it is |
 |------|----------|------------|
-| `body_phase1_a.png` | yes | Phase 1 body, cloak frame A |
-| `staff.png` | yes | The staff (drawn behind the body; lifts when summoning) |
-| `body_phase1_b.png` | no | Phase 1, cloak frame B |
-| `body_phase2_a.png` | no | Phase 2 body (uses phase 1 art if missing) |
-| `body_phase2_b.png` | no | Phase 2, cloak frame B |
-| `sprite.json` | no | Placement numbers (below) |
+| `frames_phase1.png` | yes | Every phase 1 frame in one horizontal strip |
+| `frames_phase2.png` | no | Every phase 2 frame (phase 1 art is used if missing) |
+| `sprite.json` | yes | How big one frame is, which frames are which pose, placement numbers |
 | `lich_king_palette.gpl` | no | Palette to load into your editor |
 
-**Every PNG must be the same size** (the starter files are 54 x 61) and be drawn on the same
-canvas: the staff sits in its correct place *within* its own image, so you can stack all
-files on top of each other in your editor. Only fully solid or fully transparent pixels.
+Each frame is **96 x 128 pixels** and shown at 3x. All frames sit side by side on the same canvas, in the order
+listed under `animations` in `sprite.json`. Leave empty rows above him: raised crowns, staffs and wings must not
+touch the top edge. Use only fully solid or fully transparent pixels.
 
-### Marker colours (glowing parts)
+`sprite.json` (the important parts):
 
-Paint the glowing parts in these EXACT colours. The game replaces them with live, animated
-glow. Move or reshape the eyes by repainting the markers; no code changes.
+```json
+{
+  "scale": 3,
+  "frame_size": [96, 128],
+  "anchor": [48, 78],
+  "shadow": {"y": 49, "widths": [30, 42, 30]},
+  "animations": {"idle": [0, 1, 2, 3], "volley": [4, 5, 6], "drain": [7, 8], "summon": [9, 10, 11],
+                 "recover": [12, 13], "hurt": [14], "roar": [15, 16], "nova": [17, 18, 19], "grasp": [20, 21]},
+  "orbit": {"center": [48, 82], "radius": [30, 9], "count": {"1": 3, "2": 5}},
+  "wisps": {"y": 118, "x": [31, 65]}
+}
+```
 
-| Marker | RGB | Hex | Use in |
-|--------|-----|-----|--------|
-| `eye` | 255, 0, 255 | `#FF00FF` | body: eyes, always glowing |
-| `eye_flare` | 255, 102, 255 | `#FF66FF` | body: extra eye glow while winding up |
-| `eye_burst` | 255, 176, 255 | `#FFB0FF` | body: peak eye glow just before firing |
-| `core` | 0, 255, 255 | `#00FFFF` | body: chest gem glow (heartbeat pulse) |
-| `core_rim` | 0, 136, 136 | `#008888` | body: chest gem dark edge |
-| `core_hi` | 170, 255, 255 | `#AAFFFF` | body: chest gem bright centre |
-| `orb` | 255, 255, 0 | `#FFFF00` | staff: the orb |
-| `orb_shine` | 255, 255, 170 | `#FFFFAA` | staff: orb highlight |
+* `anchor`: the pixel that sits on the boss's position (his chest). `shadow`: where the floor shadow and rune
+  circle go. `orbit`: the soul-skulls (set a count to 0 to remove them). `wisps`: where the hem dissolves.
 
-Colours are set by the game: phase 1 is cold teal, phase 2 is red, and each attack tints
-them (amber = volley, green = drain, pink = summon). Use the palette swatches rather than
-eyedropping by eye. The checker warns you if a marker is even slightly off.
+## Marker colours (glowing parts)
 
-### `sprite.json`
+Paint the glowing parts in these EXACT colours. The game replaces them with live, animated glow, and a different
+colour per phase and per attack. Move or reshape them by repainting; no code changes.
 
-Every key is optional. Numbers are in sprite pixels unless noted.
+| Marker | RGB | Hex | What it does |
+|--------|-----|-----|--------------|
+| `eye` | 255, 0, 255 | `#FF00FF` | eyes, always glowing |
+| `eye_flare` | 255, 102, 255 | `#FF66FF` | extra eye glow during a wind-up |
+| `eye_burst` | 255, 176, 255 | `#FFB0FF` | peak eye glow just before he fires |
+| `core` | 0, 255, 255 | `#00FFFF` | soul-core (heartbeat pulse) |
+| `core_rim` | 0, 136, 136 | `#008888` | soul-core dark edge |
+| `core_hi` | 170, 255, 255 | `#AAFFFF` | soul-core bright centre |
+| `orb` | 255, 255, 0 | `#FFFF00` | staff orb |
+| `orb_shine` | 255, 255, 170 | `#FFFFAA` | staff orb highlight |
+| `flame` | 255, 136, 0 | `#FF8800` | **one pixel**: where the big soul-flame burns (its base) |
+| `fire` | 255, 85, 0 | `#FF5500` | **one pixel**: base of a small flame (crown tip, horn tip) |
+| `vein` | 255, 51, 153 | `#FF3399` | runes, cracks, gems: a glow ripples down them |
 
-| Key | Meaning |
-|-----|---------|
-| `scale` | Screen pixels per sprite pixel (4 = each pixel is a 4x4 block) |
-| `anchor` | `[x, y]` pixel that sits exactly on the boss's position. Hits and attack spawns are measured from here |
-| `shadow` | `{"y": rows below the anchor, "widths": [row widths]}`, the pixel shadow on the floor |
-| `flame` | `[x, y]` bottom-centre of the soul flame held in the left hand |
-| `crown_fire` | Phase 2 fire on the crown: a list of `[x, y, extra_height]` |
-| `staff_lift` | How many pixels the staff rises when summoning |
-| `bob` | How far he floats up and down |
-| `aura_radius` | Size of the dithered glow behind him |
+`flame` and `fire` are position-only: the pixel itself disappears and a flame burns upward from it.
+Put each marker in every frame, because the flame follows his hand as the pose changes.
 
-If the sprites are missing or broken, the game does not crash. It draws a magenta box with
-an X and prints what is wrong. Run `python src/bosses/dev/check_sprites.py lich_king` for details.
+## Two ways to make the art
+
+**1. Let the generator draw it (what the shipped art does).** `src/bosses/dev/make_lich_sprites.py` is a small
+bone rig (shoulders, elbows, hands, a floating body, cape and wings). A pose is a handful of numbers, so to change
+an animation you edit numbers (see `poses()`), not pixels. To change how he looks, edit the drawing functions.
+
+```
+python src/bosses/dev/make_lich_sprites.py                    # rebuilds the PNGs and sprite.json
+python src/bosses/dev/make_lich_sprites.py --sheets folder    # also saves contact sheets to check every pose
+```
+
+**2. Paint it yourself.** Open `frames_phase1.png` in a pixel editor and paint over it (or add frames).
+Keep your editor's own file (`.aseprite` etc.) in a `source/` folder here so layers are not lost.
+
+### Pixel-art editor tips
+
+You need a **pixel art editor** (not Photoshop-style tools: they blur things). Free options: **Piskel** (runs in
+the browser), **Pixelorama**, **LibreSprite**, **PixiEditor**. Aseprite is paid and the industry favourite.
+
+* Load `lich_king_palette.gpl` (Palette menu -> Load). Use the plain 1-pixel pencil and turn anti-aliasing OFF.
+* Silhouette first, then flat colours, then 3-tone shading from the top-left, then a 1-pixel dark outline.
+* Fewer colours looks better (the checker warns above 40). Big shapes and sharp points make a boss feel dangerous.
+* Never use blur, smudge, gradient or resize tools.
+* Learn more: search **Lospec pixel art tutorials**, **Slynyrd Pixelblog**, **saint11 pixel art tutorials**.
+
+## Old format (still works)
+
+The earlier format with `body_phase1_a.png` / `_b.png` (a 2-frame cloak flutter), `body_phase2_*.png` and a
+separate `staff.png` still loads, so older art keeps working. If `frames_phase1.png` is present it is used instead.
+In that format the flame and crown fire are positioned with `"flame"` and `"crown_fire"` in `sprite.json`.
+
+## Sounds
+
+The Lich King's sounds and his three music loops are in `assets/audio/` (see `src/audio/README.md`). Every attack
+has a wind-up sound, a release sound and a bright ring on hits while he is open. Call `audio.init()` once in the
+game and they play; `python src/bosses/dev/arena.py` already does (M mutes).

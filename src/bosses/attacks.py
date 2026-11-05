@@ -17,6 +17,21 @@ def player_radius(player):
     return min(player.rect.width, player.rect.height) / 2
 
 
+def apply_status(player, name, seconds):
+    """
+    Ask the player to take a status effect: "root" (cannot move) or "slow" (half speed).
+    Returns True if it was applied.
+
+    This is OPTIONAL for the player class: if it has no apply_status(name, seconds) method the
+    request is simply ignored, so bosses keep working with a minimal player (rect + take_damage).
+    A real player class should return False while the player is invulnerable (dashing, god mode).
+    """
+    handler = getattr(player, "apply_status", None)
+    if handler is None:
+        return False
+    return bool(handler(name, seconds))
+
+
 class Projectile:
     """A glowing bolt that flies in a straight line."""
 
@@ -31,6 +46,8 @@ class Projectile:
         self.alive = True
 
     def update(self, dt, player, bounds):
+        if not self.alive:                      # a used-up projectile can never hit twice
+            return
         self.x += self.vx * dt
         self.y += self.vy * dt
 

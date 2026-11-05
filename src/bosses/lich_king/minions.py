@@ -1,83 +1,68 @@
-"""minions.py - The Lich King's skeleton minions."""
-import math
-import pygame
+"""
+minions.py - The Lich King's minions.
+
+The monsters themselves now live in the shared  src/monsters/  package so every area and event
+can use them. This file only holds what is specific to the Lich King: WHICH minions he calls and
+how many he can control at once.
+
+    Skeleton   still works (it is the Skeleton Warrior), so old code keeps running.
+
+HIS ARMY IS "UNDYING" TIER: roughly 3x the health, 30% more damage and 15% faster than the same skeleton
+in a normal area (see TIERS in monsters/__init__.py). Other areas can pick a gentler tier.
+"""
+try:
+    import balance                                                          # src/ is on sys.path
+except ImportError:
+    from src import balance
+try:
+    from monsters import spawn_monster, separate, collect_requests         # src/ is on sys.path
+    from monsters import SkeletonWarrior
+except ImportError:                                                         # run as src.bosses
+    from src.monsters import spawn_monster, separate, collect_requests
+    from src.monsters import SkeletonWarrior
+
+__all__ = ["Skeleton", "MINION_COST", "MINION_TIER", "minion_load", "pick_summons", "spawn_monster",
+           "separate", "collect_requests"]
+
+Skeleton = SkeletonWarrior                    # the old name, kept so nothing breaks
+
+MINION_TIER = "undying"
+
+# How much of his "army budget" each minion uses (he can control MAX_MINIONS worth at once)
+MINION_COST = {
+    "skeleton_warrior": 1,
+    "skeleton_archer": 1,
+    "skeleton_acolyte": 1,
+    "skeleton_brute": 2,
+}
+# How likely he is to call each one, and the most that may be alive together
+SUMMON_WEIGHT = {"skeleton_warrior": 5.0, "skeleton_archer": 3.0, "skeleton_acolyte": 2.0, "skeleton_brute": 1.5}
+SUMMON_LIMIT = {"skeleton_warrior": 6, "skeleton_archer": 3, "skeleton_acolyte": 2, "skeleton_brute": 2}
 
 
-class Skeleton:
-    """Chases the player and hurts on contact. Dies in one sword hit."""
-    SPAWN_TIME = 0.8
+# config/balance.toml:  [boss.summons] tier = "..."   and   [boss.summons.<monster>] cost / weight / limit
+_tier = {"minion_tier": MINION_TIER}
+balance.apply_summons(MINION_COST, SUMMON_WEIGHT, SUMMON_LIMIT, _tier)
+MINION_TIER = _tier["minion_tier"]
 
-    def __init__(self, x, y):
-        self.x = float(x)
-        self.y = float(y)
-        self.radius = 14
-        self.max_hp = 20
-        self.hp = 20
-        self.speed = 95
-        self.damage = 8
-        self.contact_cd = 0.0
-        self.spawn_timer = self.SPAWN_TIME
-        self.hit_flash = 0.0
-        self.clock = 0.0
 
-    def is_alive(self):
-        return self.hp > 0
+def minion_load(minions):
+    """How much of the army budget these living minions use."""
+    return sum(MINION_COST.get(getattr(m, "NAME", ""), 1) for m in minions if m.is_alive())
 
-    @property
-    def spawning(self):
-        return self.spawn_timer > 0
 
-    def take_damage(self, amount):
-        if self.spawning or not self.is_alive():
-            return 0
-        self.hp = max(0, self.hp - amount)
-        self.hit_flash = 0.1
-        return amount
-
-    def update(self, dt, player, bounds):
-        self.clock += dt
-        self.hit_flash = max(0.0, self.hit_flash - dt)
-        self.contact_cd = max(0.0, self.contact_cd - dt)
-
-        if self.spawning:
-            self.spawn_timer -= dt
-            return
-
-        px, py = player.rect.centerx, player.rect.centery
-        dx, dy = px - self.x, py - self.y
-        dist = math.hypot(dx, dy)
-        touch = self.radius + min(player.rect.width, player.rect.height) / 2
-
-        if dist > touch - 2 and dist > 0:
-            step = self.speed * dt
-            self.x += dx / dist * step
-            self.y += dy / dist * step
-
-        if dist <= touch and self.contact_cd <= 0:
-            player.take_damage(self.damage)
-            self.contact_cd = 1.0
-
-        left, top, right, bottom = bounds
-        self.x = max(left + self.radius, min(right - self.radius, self.x))
-        self.y = max(top + self.radius, min(bottom - self.radius, self.y))
-
-    def draw(self, surface):
-        cx, cy = int(self.x), int(self.y)
-        if self.spawning:
-            ring = int(10 + 8 * (self.spawn_timer / self.SPAWN_TIME))
-            pygame.draw.circle(surface, (127, 119, 221), (cx, cy), ring, 2)
-            return
-
-        bone = (255, 255, 255) if self.hit_flash > 0 else (222, 218, 204)
-        dark = (33, 29, 46)
-        pygame.draw.ellipse(surface, (18, 15, 28), (cx - 12, cy + 8, 24, 8))
-        pygame.draw.rect(surface, bone, (cx - 6, cy - 2, 12, 14))
-        pygame.draw.line(surface, dark, (cx - 6, cy + 3), (cx + 6, cy + 3), 2)
-        pygame.draw.line(surface, dark, (cx - 6, cy + 7), (cx + 6, cy + 7), 2)
-        pygame.draw.line(surface, bone, (cx - 6, cy), (cx - 14, cy + 8), 3)
-        pygame.draw.line(surface, bone, (cx + 6, cy), (cx + 14, cy + 8), 3)
-        pygame.draw.circle(surface, bone, (cx, cy - 9), 9)
-        pygame.draw.circle(surface, dark, (cx - 3, cy - 10), 3)
-        pygame.draw.circle(surface, dark, (cx + 3, cy - 10), 3)
-        pygame.draw.circle(surface, (93, 202, 165), (cx - 3, cy - 10), 1)
-        pygame.draw.circle(surface, (93, 202, 165), (cx + 3, cy - 10), 1)
+def pick_summons(rng, minions, budget, picks=3):
+    """Choose which monsters to call now: a mixed squad that fits in the free budget."""
+    alive = [getattr(m, "NAME", "") for m in minions if m.is_alive()]
+    chosen = []
+    free = budget - minion_load(minions)
+    for _ in range(picks):
+        options = [n for n in MINION_COST
+                   if MINION_COST[n] <= free
+                   and (alive + chosen).count(n) < SUMMON_LIMIT[n]]
+        if not options:
+            break
+        name = rng.choices(options, weights=[SUMMON_WEIGHT[n] for n in options])[0]
+        chosen.append(name)
+        free -= MINION_COST[name]
+    return chosen
