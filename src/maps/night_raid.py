@@ -93,8 +93,8 @@ class RaidMonster(Enemy):
             if dp > self.radius + 22:
                 self._move(player.x - self.x, player.y - self.y, dt, ground)
             elif self.attack_cd <= 0 and pc.hurt(self.damage, player, ground, self.x, self.y):
-                self.attack_cd = 0.9
-                night.sfx.play("hurt")
+                self.attack_cd = 0.9          # the Game plays the hurt sound (PlayerCombat.hits)
+                self.noise("attack")
             return
         wx, wy = WARD_CENTER
         if math.hypot(self.x - wx, self.y - wy) < WARD_R - 20:    # at the ward: claw at it
@@ -300,6 +300,8 @@ class Night:
             self.monsters.append(RaidMonster(self.source, path, self.rng))
         for m in self.monsters:
             m.step(dt, player, self.ground, pc, self)
+            for name in m.pop_sounds():
+                self.sfx.play(name)
         if not self.active:          # the ward broke this frame
             return
         tier = ORDER.index(self.source) + 1
@@ -347,7 +349,6 @@ class Night:
     def draw_world(self, scr, cx, cy, t):
         for m in sorted(self.monsters, key=lambda m: m.y):
             m.draw(scr, cx, cy)
-        self.pc.draw_slash(scr, self.world.player, cx, cy)
 
     def draw_glow(self, scr, cx, cy, t):
         n = self.night_level

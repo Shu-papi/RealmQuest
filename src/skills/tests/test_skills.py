@@ -102,20 +102,45 @@ class SkillsHit(unittest.TestCase):
     """Each skill hits a dummy where it should land, and misses one far away."""
 
     WHERE = {   # where a target should stand (aiming right) to be hit
-        "whirlwind": (60, 0), "shield_bash": (70, 0), "earthsplitter": (150, 0),
-        "fireball": (200, 0), "frost_nova": (80, 0), "meteor": (170, 0),
+        "blade_ward": (52, 0), "shield_bash": (70, 0), "earthsplitter": (150, 0),
+        "fireball": (200, 0), "meteor": (170, 0),
         "arrow_volley": (250, 0), "piercing_shot": (300, 0), "rain_of_arrows": (150, 0),
     }
 
     def test_every_skill(self):
         for cls in classes.CLASS_ORDER:
             for d in CLASS_SKILLS[cls]:
+                if d.id not in self.WHERE:          # Arcane Barrier protects, it doesn't hit
+                    continue
                 with self.subTest(skill=d.id):
                     near = Dummy(*self.WHERE[d.id])
                     far = Dummy(-900, 900)
                     cast(cls, d.slot, [near, far])
                     self.assertLess(near.hp, near.max_hp, f"{d.id} should hit")
                     self.assertEqual(far.hp, far.max_hp, f"{d.id} should miss")
+
+    def test_barriers_soak_damage_for_the_hero(self):
+        for cls, slot in (("mage", "skill_2"), ("warrior", "skill")):
+            with self.subTest(cls=cls):
+                st = classes.stats(cls)
+                fx = SkillFX()
+                SkillCaster(cls).cast(slot, Pools(st["bars"]), 0.0, 0.0, (1, 0), 3, fx)
+                shield = fx.barrier
+                self.assertIsNotNone(shield)
+                self.assertGreater(shield.absorb, 0)
+                run(fx, [], 7.0)
+                self.assertTrue(shield.done, "it wears off")
+
+    def test_blade_ward_keeps_cutting_and_guards_against_shots(self):
+        st = classes.stats("warrior")
+        fx = SkillFX()
+        SkillCaster("warrior").cast("skill", Pools(st["bars"]), 0.0, 0.0, (1, 0), 3, fx)
+        foe = Dummy(52, 0)
+        run(fx, [foe], 1.0)
+        first = foe.max_hp - foe.hp
+        run(fx, [foe], 2.0)
+        self.assertGreater(foe.max_hp - foe.hp, first, "hits again while it spins")
+        self.assertTrue(fx.guards, "the ring blocks shots")
 
     def test_cone_skills_miss_behind(self):
         for cls, slot in (("warrior", "special"), ("warrior", "skill_2")):
@@ -129,13 +154,10 @@ class SkillsHit(unittest.TestCase):
         self.assertLess(a.hp, a.max_hp)
         self.assertLess(b.hp, b.max_hp)
 
-    def test_stun_and_slow(self):
+    def test_stun(self):
         t = Dummy(70, 0)
         cast("warrior", "skill_2", [t], seconds=0.3)
         self.assertGreater(t.stun_t, 0)
-        t2 = Dummy(80, 0)
-        cast("mage", "skill_2", [t2], seconds=0.3)
-        self.assertGreater(t2.slow_t, 0)
         boss = Dummy(70, 0, boss=True)
         cast("warrior", "skill_2", [boss], seconds=0.3)
         self.assertEqual(boss.stun_t, 0.0, "bosses can't be stunned")

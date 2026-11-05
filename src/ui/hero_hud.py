@@ -76,8 +76,10 @@ class HeroHUD:
             b.update(dt)
 
     # ------------------------------------------------------------------ panel
-    def draw(self, surface, x, y, pc, name="", level=1, xp=(0, 0), portrait=None, class_name=""):
-        """Draws the panel at (x, y). Returns the y just below it."""
+    def draw(self, surface, x, y, pc, name="", level=1, xp=(0, 0), portrait=None, class_name="",
+             points=0, shield=0.0):
+        """Draws the panel at (x, y). Returns the y just below it.
+        points: unspent stat points (a pulsing badge); shield: 0..1 of a barrier left (on the HP bar)."""
         if self._frame is None:
             slot = get_image("slot.png")
             self._frame = nine_slice(slot, PANEL_W, PANEL_H, 14) if slot is not None else False
@@ -104,6 +106,14 @@ class HeroHUD:
         tx = box.right + 12
         self._text(surface, name or "Hero", font, theme.TITLE, tx, y + 10)
         self._text(surface, f"LV {level}  {class_name.upper()}", small, (170, 220, 255), tx, y + 38)
+        if points > 0:                                   # stat points waiting: a badge on the portrait
+            badge = small.render(f"+{points}", True, (40, 24, 6))
+            br = pygame.Rect(0, 0, badge.get_width() + 10, badge.get_height() + 4)
+            br.topright = (box.right + 6, box.y - 6)
+            glow = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 180)
+            pygame.draw.rect(surface, (20, 10, 6), br.inflate(4, 4), border_radius=6)
+            pygame.draw.rect(surface, (255, int(190 + 50 * glow), 80), br, border_radius=6)
+            surface.blit(badge, badge.get_rect(center=br.center))
         have, need = xp
         xb = pygame.Rect(tx + 150, y + 42, PANEL_W - (tx - x) - 164, 8)
         pygame.draw.rect(surface, (10, 6, 6), xb.inflate(2, 2))
@@ -119,6 +129,12 @@ class HeroHUD:
         for i, nm in enumerate(names):
             h = 18 if nm == "hp" else 13
             self._draw_bar(surface, self._bar(nm), nm, tx - 4, by, bar_w, h)
+            if nm == "hp" and shield > 0:                # a barrier: pale blue over the HP bar
+                sw = int((bar_w - 20) * min(1.0, shield))
+                layer = pygame.Surface((sw, h), pygame.SRCALPHA)
+                layer.fill((150, 210, 255, 120))
+                surface.blit(layer, (tx - 4 + 20, by))
+                pygame.draw.rect(surface, (210, 240, 255), (tx - 4 + 20, by, sw, h), 2)
             by += h + 6
 
         # potions (under the portrait)
@@ -227,11 +243,14 @@ def draw_glyph(surface, skill_id, r, color):
     cx, cy = r.center
     R = r.w // 2
     dark = (30, 20, 16)
-    if skill_id == "whirlwind":
+    if skill_id == "blade_ward":
+        pygame.draw.circle(surface, color, (cx, cy), R - 5, 2)
         for i in range(3):
-            a = i * 2.09
-            pygame.draw.arc(surface, color, r.inflate(-4, -4), a, a + 1.5, 4)
-        pygame.draw.line(surface, (200, 205, 220), (cx - 8, cy + 8), (cx + 8, cy - 8), 4)
+            a = i * 2.09 + 0.4
+            bx, by = cx + math.cos(a) * (R - 6), cy + math.sin(a) * (R - 6)
+            tx, ty = bx + math.cos(a + 1.57) * 9, by + math.sin(a + 1.57) * 9
+            pygame.draw.line(surface, (220, 226, 240), (bx, by), (tx, ty), 4)
+        pygame.draw.circle(surface, (178, 40, 46), (cx, cy), 5)
     elif skill_id == "shield_bash":
         pts = [(cx - R + 6, cy - R + 6), (cx + R - 6, cy - R + 6), (cx + R - 6, cy), (cx, cy + R - 3),
                (cx - R + 6, cy)]
@@ -249,11 +268,14 @@ def draw_glyph(surface, skill_id, r, color):
         pygame.draw.circle(surface, (150, 40, 20), (cx - 2, cy + 2), R - 6)
         pygame.draw.circle(surface, color, (cx - 2, cy + 2), R - 9)
         pygame.draw.circle(surface, (255, 240, 180), (cx - 5, cy - 1), R // 3)
-    elif skill_id == "frost_nova":
+    elif skill_id == "arcane_barrier":
+        pygame.draw.circle(surface, (40, 60, 110), (cx, cy), R - 4)
+        pygame.draw.circle(surface, color, (cx, cy), R - 4, 3)
+        pygame.draw.circle(surface, (240, 250, 255), (cx, cy), R - 10, 1)
         for i in range(6):
             a = i * math.pi / 3
-            pygame.draw.line(surface, color, (cx, cy), (cx + math.cos(a) * (R - 3), cy + math.sin(a) * (R - 3)), 3)
-        pygame.draw.circle(surface, (240, 250, 255), (cx, cy), 5)
+            pygame.draw.circle(surface, (240, 250, 255), (int(cx + math.cos(a) * (R - 10)),
+                                                          int(cy + math.sin(a) * (R - 10))), 2)
     elif skill_id in ("arrow_volley", "piercing_shot", "rain_of_arrows", "dash"):
         if skill_id == "dash":
             for i, dy in enumerate((-8, 0, 8)):

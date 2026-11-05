@@ -7,7 +7,8 @@ Choose your class -> straight into the world. Settings opens from the menu.
         ("new", name, character_class)   start a new game as this hero
         ("continue",)                     load the saved game
         ("quit",)                         close the game
-        ("video",)                        fullscreen was toggled (re-create the window)
+        ("video",)                        Apply changed the display (re-create the window)
+        ("applied",)                      Apply changed other settings (keys, volume...)
     front.update(dt)
     front.draw(window)                    # any window size: the 960x640 screens are centred
 
@@ -20,13 +21,17 @@ from . import theme
 from .class_select import ClassSelect, START, BACK as CLASS_BACK
 from .menu import MainMenu, CONTINUE, NEW_GAME, SETTINGS, EXIT
 from .name_entry import NameEntry, NEXT, BACK as NAME_BACK
-from .settings_screen import SettingsScreen, BACK as SETTINGS_BACK, VIDEO_CHANGED
+from .settings_screen import SettingsScreen, BACK as SETTINGS_BACK, VIDEO_CHANGED, APPLIED
 
 SIZE = (theme.SCREEN_W, theme.SCREEN_H)
 
 
 class FrontEnd:
-    def __init__(self, settings, save_info=None, portraits=None, hero_name="", skill_keys=None):
+    def __init__(self, settings, save_info=None, portraits=None, hero_name="", skill_keys=None,
+                 heroes=None, sprites=None, play=None):
+        self.heroes = heroes or []          # animated hero(es) for the home screen
+        self.sprites = sprites if sprites is not None else {}   # {class: HeroSprite} for the class cards
+        self.play = play or (lambda name: None)
         self.settings = settings
         self.portraits = portraits or {}
         self.skill_keys = skill_keys or {}
@@ -48,7 +53,7 @@ class FrontEnd:
         buttons += [("NEW GAME", NEW_GAME, "icon_shield.png" if save_info else "icon_play.png"),
                     ("SETTINGS", SETTINGS, "icon_gear.png"),
                     ("EXIT", EXIT, "icon_exit.png")]
-        self.menu = MainMenu(buttons=buttons, info=save_info)
+        self.menu = MainMenu(buttons=buttons, info=save_info, heroes=self.heroes)
 
     def open(self, screen="menu"):
         self.screen = screen
@@ -56,9 +61,16 @@ class FrontEnd:
             self.name_screen = NameEntry(self.hero_name)
         elif screen == "class":
             self.class_screen = ClassSelect(hero_name=self.hero_name, portraits=self.portraits,
-                                            skill_keys=self.skill_keys)
+                                            skill_keys=self.skill_keys, sprites=self.sprites)
+            self._flourish(self.class_screen.chosen)
         elif screen == "settings":
-            self.settings_screen = SettingsScreen(self.settings)
+            self.settings_screen = SettingsScreen(self.settings, play=self.play)
+
+    def _flourish(self, cls):
+        """The picked hero on the class cards shows off their attack once."""
+        sprite = self.sprites.get(cls)
+        if sprite is not None:
+            sprite.act("attack")
 
     # ---------- input ----------
     def _local(self, event):
@@ -72,7 +84,31 @@ class FrontEnd:
         return event
 
     def handle_event(self, event):
-        event = self._local(event)
+        """Input for the current screen, with menu sounds (move / select / back)."""
+        screen = self.screen
+        before = self._focus()
+        result = self._handle(self._local(event))
+        if screen == "settings":
+            return result                        # the settings screen plays its own sounds
+        if result is not None or self.screen != screen:
+            backwards = self.screen == "menu" and screen != "menu" or \
+                (screen == "class" and self.screen == "name")
+            self.play("ui_back" if backwards else "ui_select")
+        elif self._focus() != before:
+            self.play("ui_move")
+            if screen == "class":
+                self._flourish(self.class_screen.chosen)
+        return result
+
+    def _focus(self):
+        """What is highlighted right now (to hear when it changes)."""
+        if self.screen == "menu":
+            return self.menu.selected
+        if self.screen == "class" and self.class_screen is not None:
+            return self.class_screen.selected
+        return None
+
+    def _handle(self, event):
         if self.screen == "menu":
             action = self.menu.handle_event(event)
             if action == CONTINUE:
@@ -101,10 +137,11 @@ class FrontEnd:
         elif self.screen == "settings":
             result = self.settings_screen.handle_event(event)
             if result == SETTINGS_BACK:
-                self.settings.apply_audio()
                 self.open("menu")
             elif result == VIDEO_CHANGED:
                 return ("video",)
+            elif result == APPLIED:
+                return ("applied",)
         return None
 
     def update(self, dt):

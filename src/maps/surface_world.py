@@ -19,8 +19,16 @@ Hooking into your real dungeon scene
     return True if the dungeon was CLEARED (this unlocks the next ones).
 """
 import math
+import os
 import random
+import sys
 import pygame
+
+# src/ on the import path: the hero is the team's merged Knight / Mage / Elf Archer
+_SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+from characters.hero_sprites import HeroSprite, HEIGHT as HERO_H     # noqa: E402
 
 try:
     from . import village
@@ -658,14 +666,22 @@ class Player:
         self.dash_dir = (0.0, 1.0)
         self.speed_k = 1.0                   # class walk speed (Archer is the quickest)
         self.blink = False                   # set by the Game while invulnerable after a hit
+        self.dead = False                    # set by the Game: the hero has fallen
+        self.on_step = None                  # on_step(): a footstep (the Game plays a sound)
+        self.step_t = 0.0
         self.set_look(look)
         self.sort_y = y
         self.rect = pygame.Rect(0, 0, 36, 48)
 
     def set_look(self, look):
-        """The hero's outfit: village.LOOKS key (hero_warrior / hero_mage / hero_archer)."""
+        """The hero's class look (hero_warrior / hero_mage / hero_archer): the team's
+        Knight, Kendi the Mage or the Elf Archer (src/characters/hero_sprites.py)."""
         self.look = look
-        self.frames = village.make_npc_frames(village.LOOKS[look])   # same art style as the villagers
+        self.sprite = HeroSprite(look)
+
+    def act(self, kind="attack", duration=None):
+        """Play the attack / special animation (the Game calls this on swings and skills)."""
+        self.sprite.act(kind, duration)
 
     def feet(self):
         return pygame.Rect(int(self.x) - 9, int(self.y) - 9, 18, 9)
@@ -674,20 +690,15 @@ class Player:
         if self.blink:
             self.sort_y = self.y
             return
-        step = 0
-        if self.moving:
-            step = 1 if int(self.walk * 6) % 2 == 0 else 2
-        img = self.frames[(self.facing, step)]
-        if self.facing == "side" and self.flip:
-            img = pygame.transform.flip(img, True, False)
         X, Y = int(self.x - cx), int(self.y - cy)
         sh = pygame.Surface((30, 12), pygame.SRCALPHA)
         pygame.draw.ellipse(sh, (0, 0, 0, 90), (0, 0, 30, 12))
         scr.blit(sh, (X - 15, Y - 8))
-        bob = -1 if (self.moving and step) else 0
-        w, h = img.get_size()
-        scr.blit(img, (X - w // 2, Y - h + 4 + bob))
-        self.rect.topleft = (int(self.x) - w // 2, int(self.y) - h + 4)
+        # the art faces left / right only: walking up or down keeps the last side
+        self.sprite.set_dead(self.dead)
+        self.sprite.draw(scr, X, Y + 2, moving=self.moving and not self.dead, left=self.flip)
+        self.rect.topleft = (int(self.x) - 18, int(self.y) - HERO_H + 4)
+        self.rect.size = (36, HERO_H)
         self.sort_y = self.y
 
     def lights(self, t):
@@ -699,8 +710,10 @@ class Player:
 # --------------------------------------------------------------------------- #
 class SurfaceWorld:
     def __init__(self, screen, on_enter_dungeon=None, progress=None, save=None, on_talk=None,
-                 on_landmark=None, quest_info=None):
+                 on_landmark=None, quest_info=None, on_loading=None):
         self.screen = screen
+        self.on_loading = on_loading      # on_loading(): show a loading card in the real window
+        self.cam_shake = (0, 0)           # camera shake from the Game (juice.offset())
         self.on_enter = on_enter_dungeon
         self.progress = progress or Progress()
         self.save = save                  # shared SaveState (gold, flags); None when run standalone
@@ -739,6 +752,9 @@ class SurfaceWorld:
 
     # ------------------------------------------------------------------ build
     def _loading(self):
+        if self.on_loading is not None:
+            self.on_loading()
+            return
         self.screen.fill((10, 16, 12))
         img = self.f_title.render("Loading Oakwood Vale...", True, (200, 230, 190))
         self.screen.blit(img, img.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
@@ -1514,6 +1530,11 @@ class SurfaceWorld:
         elif dy:
             p.facing = "down" if dy > 0 else "up"
         p.walk += dt
+        p.step_t += dt
+        if p.step_t >= 0.32 and p.dash_t <= 0:
+            p.step_t = 0.0
+            if p.on_step:
+                p.on_step()
         dyn = self.dyn_colliders
         p.x += vx
         if p.feet().collidelist(self.colliders) != -1 or p.feet().collidelist(dyn) != -1:
@@ -1710,8 +1731,9 @@ class SurfaceWorld:
 
     def camera(self):
         pl = self.player
-        return (int(max(0, min(WORLD_W - SCREEN_W, pl.x - SCREEN_W / 2))),
-                int(max(0, min(WORLD_H - SCREEN_H, pl.y - SCREEN_H / 2 - 20))))
+        sx, sy = self.cam_shake
+        return (int(max(0, min(WORLD_W - SCREEN_W, pl.x - SCREEN_W / 2))) + sx,
+                int(max(0, min(WORLD_H - SCREEN_H, pl.y - SCREEN_H / 2 - 20))) + sy)
 
     def draw(self):
         scr, t, pl = self.screen, self.t, self.player

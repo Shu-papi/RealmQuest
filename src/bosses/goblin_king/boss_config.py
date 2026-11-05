@@ -73,6 +73,18 @@ ENRAGE_HP_FRACTION        = 0.5
 START_HEAVY_COOLDOWN      = 6.0    # delay before the first heavy attack
 START_SPECIAL_COOLDOWN    = 6.0    # delay before the first special
 
+# ====================== PHASE 2 ======================
+# At PHASE2_HP_FRACTION of his HP he stops, roars and calls in his minions (once).
+# He can't be hurt while he roars (SUMMON_TIME seconds). In the game, the room spawns
+# PHASE2_SUMMONS around him: "minion", "shaman", "slime", "boar", or "extra" (a random
+# minion / slime / boar). Standalone demo: he just roars, nobody comes.
+PHASE2_HP_FRACTION = 0.5
+SUMMON_TIME        = 1.2
+PHASE2_SPEED_K     = 1.2          # walk speed x this in phase 2
+PHASE2_SUMMONS     = ["minion", "minion", "shaman", "extra"]
+SUMMON_RING        = 110          # px from his feet where the minions appear
+SUMMON_COLOR       = (120, 230, 90)
+
 # ====================== ANIMATIONS ======================
 # frames : column numbers in the sheet, played in order (repeat a column to hold it longer)
 # fps    : animation speed (lower = slower)
@@ -105,6 +117,13 @@ SPECIAL = {
              12: (150, 120, 120)},  # ground slam, 120 degree cone
     "dash": (7, 10, 260),          # jump toward the player
 }
+# Sounds (assets/sfx/, names from src/maps/sfx.py FILE_SOUNDS): attack -> {frame: sound}.
+# The swing starts two frames before a hit so the whoosh leads into it.
+SOUNDS = {
+    "heavy": {10: "king_swing", 12: "king_slam"},
+    "special": {3: "king_swing", 10: "king_swing", 12: "king_slam"},
+}
+
 # ====================== IN THE GAME ======================
 # The dungeon fight (src/maps) uses these instead of the numbers above, so the
 # boss matches the game's scale: the hero has ~40-60 HP and hits for ~2-10.

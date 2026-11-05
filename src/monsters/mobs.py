@@ -103,7 +103,9 @@ def clip_specs(key):
     else:
         specs["barrier"] = dict(file="attack/attack_goblin_shaman_barrier.png", loop=False, baseline=236,
                                 anchor=116, px=4, ms=[180, 150, 150, 380], hit_frame=2, root=0)
-        specs["fireball"] = dict(file="attack/attack_goblin_shaman_fireball.png", loop=False, baseline=236,
+        # the cast sheet = the fireball sheet without the painted fireball (tools/make_shaman_cast.py);
+        # the game's real projectile leaves the staff orb on hit_frame
+        specs["fireball"] = dict(file="attack/attack_goblin_shaman_cast.png", loop=False, baseline=236,
                                  anchor=52, px=4, ms=[200, 160, 130, 320], hit_frame=2, root=0)
     return specs
 

@@ -28,8 +28,10 @@ Progress is saved automatically to `savegame.json` in the project root:
 - **Home screen:** Continue (shown when there is a save, with your hero's name, class, level and anchors), New Game, Settings and Exit.
 - **New Game:** type your hero's name (or press Tab / the dice for a random one), choose **Warrior**, **Mage** or **Archer**, and you are straight in Oakwood.
 - **The story uses your name** everywhere: every dialog, the journal, toasts and the ending. (Saves from before this update load as Himmel the Warrior.)
-- **Settings** (home screen or the pause menu): volumes, fullscreen and key bindings. They are saved to `.realmquest_settings.json` in your home folder.
-- **Pause (Esc):** Resume, Settings, Save & Quit to Menu, Quit Game.
+- **Settings** (home screen or the pause menu): volumes; video (display mode: Windowed, Borderless Window, Borderless Fullscreen or Fullscreen; resolution from 960x540 to 2560x1440; VSync; FPS limit; show FPS; screen shake); and key bindings. Changes only take effect when you press **APPLY**; **CANCEL** (or Esc / X) throws away what you didn't apply. They are saved to `.realmquest_settings.json` in your home folder. The game draws at 1152x648 and that picture is scaled to fill the window or screen (black bars only on screens that aren't 16:9), so 1920x1080 fullscreen fills the whole monitor.
+- **Pause (Esc):** Resume, Character, Settings, Save & Quit to Menu, Quit Game.
+- **Feel:** big hits shake the camera (Settings > Screen Shake turns it off), crits and boss hits pause for a split second, monsters burst into smoke, and being hit flashes the screen edges red with the damage shown over your hero (blue numbers = what a barrier soaked). A level-up bursts with golden rings, and the HUD portrait shows a gold badge while stat points are waiting.
+- **Sound:** every sound is still generated in code (no files). Frequent sounds have pitch variants, a limiter stops bursts from stacking, and the menus, footsteps, loot (by rarity) and gear all have their own sounds. The sounds are cached in your temp folder, so the game starts faster after the first run.
 
 Delete `savegame.json` to reset.
 
@@ -38,15 +40,18 @@ Delete `savegame.json` to reset.
 |---|---|---|---|
 | HP | 48 | 34 | 40 |
 | Bars | Stamina 100, Energy 100 | Mana 120, Stamina 80 | Stamina 110, Energy 100 |
-| Basic attack | Sword (+1 damage) | Staff | Dagger (fastest) |
-| K | Whirlwind: spin, hits all around | Fireball: explodes on impact | Arrow Volley: three arrows |
-| U | Shield Bash: lunge, stuns | Frost Nova: ring that slows | Piercing Shot: goes through enemies |
-| F (special) | Earthsplitter: huge cone slam | Meteor: falls where you face | Rain of Arrows: 3 s of arrows on an area |
+| Basic attack | Sword (+1 damage, close range), 0.55 s | Arcane bolt (long range, 6 mana), 0.65 s | Bow arrow (long range), 0.5 s |
+| K | Blade Ward: 3 swords spin around you for 6 s, cutting monsters, soaking damage and blocking shots | Fireball: explodes on impact | Arrow Volley: three arrows |
+| U | Shield Bash: lunge, stuns | Arcane Barrier: a bubble that soaks up damage for 6 s | Piercing Shot: goes through enemies |
+| F (special) | Earthsplitter: huge cone slam | Meteor: falls on the cursor | Rain of Arrows: 3 s of arrows on the cursor |
 
+- **Basic attacks are deliberately slow** (times above); Attack Speed from gear and Agility makes them faster.
 - **Stamina** pays for the dash (25 each) and refills quickly.
-- **Mana** (Mage) refills steadily. **Energy** (Warrior, Archer) refills slowly and also fills when your basic attacks land.
+- **Skills aim at the mouse cursor** (Meteor and Rain of Arrows land on it, up to a few steps away). Clicking also aims the basic attack at the cursor; Space / J attack the way you face.
+- **Mana** (Mage) refills steadily and also pays for the arcane bolt. **Energy** (Warrior, Archer) refills slowly and also fills when your basic attacks land.
 - Skills and the dash work **in the overworld and in every dungeon**. The skill bar (bottom right) shows cooldowns, costs and keys.
 - The numbers live in `src/skills/classes.py` and `src/skills/skills.py`.
+- **Their look is the team's merged characters:** the Warrior is the **Knight** (`assets/characters/knight_*`), the Mage is **Kendi** (`characters/kendi_pygame`) and the Archer is the **Elf Archer** (`assets/characters/elf_archer`). `src/characters/hero_sprites.py` loads them with each pack's own timings and anchors, sizes them for the world and uses them in the overworld, dungeons, HUD, dialog and class select.
 
 ## Controls
 - **WASD / Arrow keys:** move
@@ -55,11 +60,20 @@ Delete `savegame.json` to reset.
 - **Shift:** dash (costs stamina)
 - **H / P:** healing potion
 - **E / Enter:** talk, open doors and gates, read tablets, drink from fonts, enter portals
+- **I / C:** character screen (gear, bag and stats)
 - **Tab / L:** journal (quests and lore)
 - **Q:** previous floor (on a first floor, back to Oakwood)
 - **R:** retry the room after dying
 - **M:** toggle minimap
 - **Esc:** pause
+
+## Gear, stats and stat points
+- **Character screen (I):** your stats on the left (HP, attack, defense, attack speed, move speed, crit, mana / energy), what you wear in the middle (helmet, armor, boots, weapon, trinket) and your bag (24 slots) on the right. Point at an item to compare it with what you wear (green = better). Click or Enter to wear it; right-click or X to sell it (Rare and better ask twice).
+- **Gear drops from monsters**: sometimes from normal monsters, often from elites, always from bosses; lairs and events in the overworld too. Better rarities (Common, Uncommon, Rare, Epic, Legendary) shine with a coloured beam. Walk over a drop to pick it up. Drops left behind when you change place are lost.
+- **Torvin's Forge sells gear** on its new **Gear for you** tab (A / D to switch tabs): a piece for every slot, getting better after each dungeon. Weapons are for your class only (swords, staves, bows); armor fits everyone.
+- **Stat points:** every level gives **2 points** to spend on the character screen: **Vitality** (+5 max HP), **Power** (+0.5 attack), **Guard** (+1 defense), **Agility** (+3% attack speed, +1.5% move speed) and **Spirit** (+6 max mana / energy, +0.3 regen). R gives every point back to spend again.
+- **Defense** softens every hit (damage x 20 / (20 + defense)); **crits** hit twice as hard.
+- Items and stat points live in `src/inventory/gear.py`; the screen is `src/ui/character_screen.py`. Old saves start with their class's starter weapon.
 
 ## Quests and the world
 - **Main quest** (*Beyond the Veil*): three chapters, one per dungeon. The current step is always shown in the tracker under your gold, with a gold diamond on the minimap.
@@ -83,7 +97,7 @@ Delete `savegame.json` to reset.
 
 ## Growing stronger
 Himmel earns **XP** from every monster he kills, from clearing mini dungeons, destroying lairs, winning night raids and finishing world events.
-- **Each level:** +4 max HP, and +1 sword damage every third level. A level-up fully heals him.
+- **Each level:** +4 max HP, 2 stat points, and +1 sword damage every third level. A level-up fully heals him.
 - **The level badge and XP bar** sit next to the HP bar.
 - **The main dungeons are sealed until Himmel is strong enough:**
 

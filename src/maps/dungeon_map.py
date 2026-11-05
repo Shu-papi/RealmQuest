@@ -5,9 +5,9 @@ from dataclasses import dataclass
 import pygame
 
 try:
-    from .combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open
+    from .combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open, GOBLIN_SKINS
 except ImportError:
-    from combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open
+    from combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open, GOBLIN_SKINS
 
 try:
     from . import dungeon_gen
@@ -60,6 +60,13 @@ except ImportError:
     from combat import sprite as monster_sprite
 
 try:
+    from .loot import GroundLoot
+    from .juice import Juice
+except ImportError:
+    from loot import GroundLoot
+    from juice import Juice
+
+try:
     from . import surface_world as sw_mod
     from . import npc_art
     from .music import Music, pick_place
@@ -70,13 +77,36 @@ except ImportError:
 
 # combat.py put src/ on the import path: the team's UI and the hero's skills
 from skills.skills import SkillFX, SLOTS                       # noqa: E402
+from characters import hero_sprites                            # noqa: E402
+from inventory.gear import roll_drop, drop_tier, POINTS_PER_LEVEL   # noqa: E402
+
+
+class LazySprites(dict):
+    """{class: HeroSprite} that only builds a hero the first time it is asked for (the class
+    cards need them, the home screen doesn't: startup stays quick)."""
+
+    def __init__(self, height):
+        super().__init__()
+        self.height = height
+
+    def get(self, cls, default=None):
+        if cls not in self:
+            self[cls] = HeroSprite(cls, height=self.height)
+        return self[cls]
+
+
+def save_points_per_level():
+    return POINTS_PER_LEVEL
+from ui.character_screen import CharacterScreen, CLOSE as SHEET_CLOSE   # noqa: E402
+from characters.hero_sprites import HeroSprite                 # noqa: E402
 from ui import widgets as ui_widgets                           # noqa: E402
 from ui import theme as ui_theme                               # noqa: E402
 from ui.app_screens import FrontEnd, draw_centered             # noqa: E402
 from ui.assets import get_font                                 # noqa: E402
 from ui.hero_hud import HeroHUD                                # noqa: E402
 from ui.settings_data import Settings                          # noqa: E402
-from ui.settings_screen import SettingsScreen, BACK as SETTINGS_BACK, VIDEO_CHANGED  # noqa: E402
+from ui.settings_screen import SettingsScreen, BACK as SETTINGS_BACK, VIDEO_CHANGED, APPLIED  # noqa: E402
+from ui.display import Display                                 # noqa: E402
 from ui.text import draw_text as ui_text                       # noqa: E402
 
 # dungeon number used by the floors ("1-1" -> 1) <-> portal id in the surface world
@@ -2281,6 +2311,9 @@ class Player:
         self.face = (0.0, 1.0)
         self.dir = "down"
         self.blink = False          # set by Game while invulnerable after a hit
+        self.dead = False           # set by Game: the hero has fallen
+        self.on_step = None         # on_step(): a footstep (the Game plays a sound)
+        self.step_t = 0.0
         self.dust: list[list[float]] = []
         self.dust_t = 0.0
         self.dash_t = 0.0                  # > 0 while dashing (Shift)
@@ -2290,9 +2323,15 @@ class Player:
         pygame.draw.ellipse(self.shadow, (0, 0, 0, 90), (3, 2, 16, 6))
 
     def set_look(self, look: str):
-        """Same pixel-art hero as in the overworld (npc_art.LOOKS: hero_warrior / _mage / _archer)."""
+        """Same hero as in the overworld: the team's Knight, Kendi the Mage or the Elf Archer
+        (hero_warrior / hero_mage / hero_archer, see src/characters/hero_sprites.py)."""
         self.look = look
-        self.frames = {k: v.convert_alpha() for k, v in npc_art.make_npc_frames(npc_art.LOOKS[look]).items()}
+        self.sprite = HeroSprite(look)
+        self.flip = False                  # the art faces left / right only
+
+    def act(self, kind: str = "attack", duration: float | None = None):
+        """Play the attack / special animation (the Game calls this on swings and skills)."""
+        self.sprite.act(kind, duration)
 
     def place(self, x: float, y: float):
         self.x, self.y = x, y
@@ -2322,6 +2361,11 @@ class Player:
             self.dir = "down" if dy > 0 else "up"
         self.anim += dt
         self.dust_t += dt
+        self.step_t += dt
+        if self.step_t >= 0.32 and self.dash_t <= 0:
+            self.step_t = 0.0
+            if self.on_step:
+                self.on_step()
         if self.dust_t > (0.03 if self.dash_t > 0 else 0.15):
             self.dust_t = 0.0
             self.dust.append([self.x + random.uniform(-3, 3), self.y - 1, 0.45])
@@ -2344,14 +2388,11 @@ class Player:
         if self.blink:
             return
         sx, sy = int(sx), int(sy)
-        step = (1 if int(self.anim * 6) % 2 == 0 else 2) if self.moving else 0
-        facing = {"left": "side", "right": "side"}.get(self.dir, self.dir)
-        img = self.frames[(facing, step)]
-        if self.dir == "left":
-            img = pygame.transform.flip(img, True, False)
+        if self.dir in ("left", "right"):  # up / down keep the last side
+            self.flip = self.dir == "left"
         surf.blit(self.shadow, (sx - 11, sy - 6))
-        w, h = img.get_size()
-        surf.blit(img, (sx - w // 2, sy - h + 4 - (1 if step else 0)))
+        self.sprite.set_dead(self.dead)
+        self.sprite.draw(surf, sx, sy + 2, moving=self.moving and not self.dead, left=self.flip)
 
 
 # --------------------------------------------------------------------------
@@ -2363,8 +2404,10 @@ class Game:
         pygame.init()
         pygame.display.set_caption("RealmQuest - Beyond the Veil")
         self.settings = Settings.load()
-        self.screen = self.settings.apply_display((SCREEN_W, SCREEN_H)) if self.settings.fullscreen \
-            else pygame.display.set_mode((SCREEN_W, SCREEN_H))
+        # The game draws on a fixed SCREEN_W x SCREEN_H canvas; Display opens the window from the
+        # settings (display mode, resolution, VSync) and scales the canvas to fill it.
+        self.display = Display((SCREEN_W, SCREEN_H))
+        self.screen = self.display.open(self.settings)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 30)
         self.small_font = pygame.font.Font(None, 21)
@@ -2382,12 +2425,19 @@ class Game:
         self.pending = None
         self.title_t = 0.0
         self.show_map = True
+        self.juice = Juice(self.settings)            # shake, hit-pause, puffs, hurt flash
+        self.menu_fade = 0.0                         # fade-in of the home screen
+        self.fall_t = 0.0                            # how long the hero has lain fallen in the overworld
         # Campaign save (gold, upgrades, cleared dungeons, keepsakes, story flags)
         self.has_save = SaveState.exists()
         self.save = SaveState.load()
         self.toasts: list[list] = []       # dungeon-side banner messages [text, color, life]
         self.shop: ShopMenu | None = None
         self.journal: Journal | None = None
+        self.sheet: CharacterScreen | None = None     # gear, bag and stats (I)
+        self.loot = GroundLoot()                       # gear dropped by monsters, here
+        self.loot_place = None
+        self.loot_rng = random.Random()
         self.quests = quests.QuestBook(self.save)
         self.floor_name = "1-1"
         self.run_seed = random.getrandbits(30)   # new random floors every time you enter a dungeon
@@ -2405,7 +2455,7 @@ class Game:
                                            on_enter_dungeon=self.enter_from_surface,
                                            progress=progress, save=self.save,
                                            on_talk=self.talk_to, on_landmark=self.use_landmark,
-                                           quest_info=self.quest_info)
+                                           quest_info=self.quest_info, on_loading=self.show_loading)
         self.surface.npc_alert = self.npc_marker
         self.surface.quests = self.quests
         self.pc = PlayerCombat()
@@ -2445,6 +2495,8 @@ class Game:
         self.pause_settings = None     # SettingsScreen opened from the pause menu
         self.surface.draw_fx_hook = self.draw_village_fx
         self.surface.hero_hud_hook = self.draw_village_hud
+        for body in (self.player, self.surface.player):  # footsteps
+            body.on_step = self.footstep
         self.apply_hero()
         self.open_front()
         self.victory = False
@@ -2473,9 +2525,69 @@ class Game:
         for p in (self.surface.player, self.player):
             if getattr(p, "look", None) != look:
                 p.set_look(look)
+        self.refresh_stats()
+        self.hero_portrait = hero_sprites.bust(look)                 # HUD panel
+        self.portraits[story.HERO] = hero_sprites.portrait(look)     # dialog: stands above the box
+
+    def show_loading(self, text="Loading Oakwood Vale..."):
+        """A loading card in the real window (SurfaceWorld calls this while it builds)."""
+        self.screen.fill((10, 16, 12))
+        ui_text(self.screen, text, get_font(ui_theme.FONT_BUTTON), (200, 230, 190), (SCREEN_W // 2, SCREEN_H // 2),
+                outline=2, center=True)
+        self.display.present()
+        pygame.event.pump()
+
+    def footstep(self):
+        self.sfx.play("step", 0.35)
+
+    def refresh_stats(self):
+        """Gear, stat points and upgrades onto the hero (HP, damage, speed, bars...)."""
+        self.save.apply_to(self.pc)
+        for p in (self.surface.player, self.player):
             p.speed_k = self.pc.speed_k
-        self.hero_portrait = village.portrait(look)
-        self.portraits[story.HERO] = self.hero_portrait
+
+    def open_sheet(self):
+        self.save.pull_from(self.pc)
+        self.sheet = CharacterScreen(self.save, self.pc, hero_sprites.card(self.save.hero_class),
+                                     on_change=self.sheet_changed, play=self.sfx.play)
+        self.sfx.play("blip")
+
+    def sheet_changed(self):
+        before = self.pc.max_hp
+        self.refresh_stats()
+        if self.pc.max_hp > before:                 # more max HP: the new part comes filled
+            self.pc.heal(self.pc.max_hp - before)
+
+    # ---- loot -----------------------------------------------------------------------
+    DROP_CHANCE = {"normal": 0.07, "elite": 0.35, "boss": 1.0}
+    RARITY_SOUND = {2: "drop_rare", 3: "drop_epic", 4: "drop_legendary"}
+
+    def roll_loot(self, x, y, tier, kind="normal", chance=None):
+        """Maybe drop a piece of gear for the hero's class at (x, y)."""
+        p = self.DROP_CHANCE.get(kind, 0.07) if chance is None else chance
+        if self.loot_rng.random() >= p:
+            return
+        boss = kind == "boss"
+        item = roll_drop(self.loot_rng, self.save.hero_class, drop_tier(tier, boss), luck=1.5 if boss else 0.0)
+        self.loot.drop(item, x, y)
+        sound = self.RARITY_SOUND.get(item.rarity)
+        if sound:
+            self.sfx.play(sound)
+        if item.rarity >= 3:                        # Epic and Legendary: everyone should notice
+            self.juice.add_shake(0.15)
+
+    def update_loot(self, dt):
+        place = "village" if self.mode == "village" else self.floor_name
+        if place != self.loot_place:                # left the place: what's on the ground is lost
+            self.loot.clear()
+            self.loot_place = place
+        for item in self.loot.update(dt, self.hero(), self.save.gear):
+            self.sfx.play(self.RARITY_SOUND.get(item.rarity, "pickup"))
+            msg = ("Picked up %s  (I: wear it)" % item.name, item.color)
+            (self.toast if self.mode == "dungeon" else self.surface.toast)(*msg)
+        if self.loot.bag_full:
+            (self.toast if self.mode == "dungeon" else self.surface.toast)(
+                "Your bag is full - sell something (I)", (255, 150, 130))
 
     def hero(self):
         """The hero's body in the current place (overworld or dungeon)."""
@@ -2490,12 +2602,16 @@ class Game:
                                                         s.hero_class.title(), s.level, len(s.keepsakes))
 
     def open_front(self, screen="menu"):
-        portraits = {c: npc_art.make_npc_frames(npc_art.LOOKS[npc_art.hero_look(c)])[("down", 0)]
-                     for c in ("warrior", "mage", "archer")}
+        portraits = {c: hero_sprites.card(c) for c in ("warrior", "mage", "archer")}
+        sprites = LazySprites(118)                  # the class cards' heroes, made when first shown
+        heroes = [self.save.hero_class] if self.can_continue() else ["warrior", "mage", "archer"]
         self.front = FrontEnd(self.settings, save_info=self.save_summary(), portraits=portraits,
-                              skill_keys={slot: self.key_label(slot) for slot in SLOTS})
+                              skill_keys={slot: self.key_label(slot) for slot in SLOTS},
+                              heroes=[HeroSprite(c, height=170) for c in heroes], sprites=sprites,
+                              play=self.sfx.play)
         self.front.open(screen)
         self.state = "menu"
+        self.menu_fade = 1.0
 
     def return_to_menu(self):
         """Pause menu -> Save & Quit: back to the home screen (the game is saved)."""
@@ -2506,6 +2622,8 @@ class Game:
         self.dialog = None
         self.shop = None
         self.journal = None
+        self.sheet = None
+        self.loot.clear()
         self.night.abort()
         self.fx.clear()
         self.victory = False
@@ -2542,7 +2660,7 @@ class Game:
         attack = "/".join(pygame.key.name(c).upper() for c in sorted(self.keys["attack"])) or k("attack")
         attack = attack.replace("SPACE", "Space")
         return (f"WASD: move  |  {attack}: attack  |  {k('skill')} {k('skill_2')} {k('special')}: skills"
-                f"  |  {k('dash')}: dash  |  E: talk / use  |  Tab: journal  |  H: potion  |  M: map  |  Esc: pause")
+                f"  |  {k('dash')}: dash  |  E: talk / use  |  I: gear  |  Tab: journal  |  H: potion  |  M: map  |  Esc: pause")
 
     # ---- skills -------------------------------------------------------------------
     def skill_targets(self):
@@ -2564,10 +2682,14 @@ class Game:
         if self.mode == "village" and self.surface.state != "play":
             return
         p = self.hero()
-        d = self.pc.caster.cast(slot, self.pc.pools, p.x, p.y, p.face, self.pc.sword_dmg, self.fx)
+        aim, reach = self.cursor_aim(p)          # skills go where the cursor is
+        d = self.pc.caster.cast(slot, self.pc.pools, p.x, p.y, aim, self.pc.sword_dmg, self.fx, reach=reach)
         if d is None:
             self.sfx.play("no_mana" if self.pc.caster.cd[slot] <= 0 else "blip")
             return
+        p.face = self.unit(aim)
+        self.face_toward(p, aim)
+        p.act("special" if slot == "special" else "attack", 0.5 if slot == "special" else 0.4)
         if self.fx.lunge:                      # Shield Bash: a short charge forward
             p.dash_dir, p.dash_t = self.fx.lunge, 0.14
             self.pc.dash_inv = max(self.pc.dash_inv, 0.25)
@@ -2575,12 +2697,49 @@ class Game:
 
     def update_skills(self, dt):
         self.fx.update(dt, self.skill_targets(), self.hero(), self.skill_blocked())
+        if self.fx.shake > 0:                    # Earthsplitter / Meteor: now the camera feels it
+            if self.fx.shake >= 0.3:
+                self.juice.hit_pause(0.06)
+            self.juice.add_shake(self.fx.shake * 1.6)
+            self.fx.shake = 0.0
+        self.react_to_hits()
+        if self.fx.barrier is not None:          # Arcane Barrier / Blade Ward now guard the hero
+            self.pc.barrier, self.fx.barrier = self.fx.barrier, None
+        if self.fx.guards and self.mode == "dungeon":     # Blade Ward blocks shots flying in
+            for b in self.enc.bolts:
+                if any(math.hypot(b.x - gx, b.y - gy) <= r for gx, gy, r in self.fx.guards):
+                    b.dead = True
+        self.update_loot(dt)
         for name in self.fx.sounds:
             self.sfx.play(name)
         self.fx.sounds.clear()
+        if self.fx.basic_dealt:                # arrows that landed fill the Archer's energy
+            if self.pc.energy_on_hit:
+                self.pc.pools.add("energy", self.fx.basic_dealt * self.pc.energy_on_hit)
+            self.fx.basic_dealt = 0
         if self.fx.hits:
             self.sfx.play("hit")
             self.fx.hits = 0
+
+    def react_to_hits(self):
+        """The hero was hit (any source, see PlayerCombat.hits): numbers, flash, shake, sound."""
+        pc = self.pc
+        if not pc.hits:
+            return
+        p = self.hero()
+        hurt = sum(d for d, _s in pc.hits)
+        soaked = sum(s for _d, s in pc.hits)
+        if hurt:
+            self.fx.floaters.append([p.x, p.y - 62, "-%d" % hurt, 0.9, (255, 96, 86)])
+            self.juice.hurt_flash(min(1.0, 0.45 + 3.0 * hurt / max(1, pc.max_hp)))
+            self.juice.add_shake(0.3 + min(0.3, hurt / max(1, pc.max_hp)))
+            self.sfx.play("hurt")
+            p.act("hurt")
+        if soaked:
+            self.fx.floaters.append([p.x + 30, p.y - 44, "%d" % soaked, 0.7, (150, 200, 255)])
+            if not hurt:
+                self.sfx.play("shield_hit")
+        pc.hits.clear()
 
     def target_hp(self):
         return sum(max(0, getattr(t, "hp", 0)) for t in self.skill_targets())
@@ -2609,6 +2768,7 @@ class Game:
         self.victory = False
         self.paused = False
         self.fx.clear()
+        self.fade, self.fade_dir = 1.0, -1          # fade in from the menu
         sw = self.surface
         if new:
             self.night.abort()
@@ -2829,8 +2989,11 @@ class Game:
             msg = "LEVEL UP!  Level %d   (+%d max HP)" % (after, 4 * (after - before))
             if after // 3 > before // 3 or (after - 1) // 3 > (before - 1) // 3:
                 msg += "  +1 damage"
+            msg += "   +%d stat points (I)" % (save_points_per_level() * (after - before))
             (self.toast if self.mode == "dungeon" else self.surface.toast)(msg, (150, 220, 255))
-            self.sfx.play("victory")
+            self.sfx.play("level_up")
+            h = self.hero()
+            self.juice.level_up(h.x, h.y)
 
 
     def collect_kill_xp(self):
@@ -2838,7 +3001,13 @@ class Game:
         tier = getattr(d, "tier", 1)
         for x, y, hp, kind in enc.killed:
             mult = {"boss": 3, "elite": 2}.get(kind, 1)
+            self.juice.puff(x, y, big=kind in ("boss", "elite"))
+            self.sfx.play("enemy_die")
+            if kind == "boss":
+                self.juice.add_shake(0.7)
+                self.juice.hit_pause(0.12)
             self.gain_xp(hp * tier * mult, x, y, self.interact.floaters)
+            self.roll_loot(x, y, tier, kind if kind in self.DROP_CHANCE else "normal")
         enc.killed.clear()
         m = getattr(d, "mini", None)
         if m and enc.state[-1] == "cleared" and not getattr(d, "lair_rewarded", False):
@@ -3047,14 +3216,82 @@ class Game:
     def attack(self, aim=None):
         if self.fade_dir != 0 or self.pc.dead:
             return
-        swung = self.pc.cd <= 0
-        if swung:
-            self.sfx.play("swing")
+        if self.hero_attack(self.player, self.enc, aim):
+            self.interact.swing(self.player, self.pc.swing_dir)    # pots and crates next to you
+
+    def attack_anim_time(self) -> float:
+        """The hero's attack animation is squeezed to about one swing cooldown."""
+        return max(0.3, self.pc.swing_cd)
+
+    def hero_attack(self, p, enc, aim) -> bool:
+        """Basic attack for the hero's class: the Knight's sword, the Mage's arcane bolt
+        (costs mana) or the Elf Archer's arrow. Returns True if it happened."""
+        pc = self.pc
+        if pc.cd > 0 or pc.dead:
+            return False
+        if not pc.can_attack():                  # Mage out of mana
+            self.sfx.play("no_mana")
+            return False
+        anim = self.attack_anim_time()
         before = self.target_hp()
-        self.pc.try_attack(self.player, self.enc, aim)
-        self.energy_from_hits(before)
-        if swung and self.pc.swing > 0:
-            self.interact.swing(self.player, self.pc.swing_dir)
+        hp_before = [(t, t.hp) for t in self.skill_targets()]
+        pc.try_attack(p, enc, aim, self.fx, release=anim * pc.basic.get("release", 0.0))
+        self.energy_from_hits(before)            # sword hits; arrows add theirs when they land
+        self.melee_feedback(hp_before)
+        self.sfx.play({"bolt": "bolt", "arrow": "bow"}.get(pc.basic["kind"], "swing"))
+        self.face_toward(p, pc.swing_dir)
+        p.act("attack", anim)
+        return True
+
+    def melee_feedback(self, hp_before):
+        """Sword hits land at once: damage numbers, sparks; crits and boss hits pause a moment."""
+        crit = self.pc.last_crit and not self.pc.ranged
+        landed = False
+        for t, hp in hp_before:
+            lost = hp - t.hp
+            if lost <= 0:
+                continue
+            landed = True
+            self.fx.floaters.append([t.x, t.y - 40, ("%d!" % lost) if crit else str(int(lost)), 0.8,
+                                     (255, 160, 60) if crit else (255, 238, 150)])
+            self.juice.sparks(t.x, t.y, (255, 200, 120) if crit else (255, 240, 200), 8 if crit else 5)
+            if getattr(t, "kind", "") == "boss":
+                self.juice.hit_pause(0.03)
+        if landed:
+            self.sfx.play("crit" if crit else "hit")
+            if crit:
+                self.juice.hit_pause(0.05)
+                self.juice.add_shake(0.25)
+
+    @staticmethod
+    def face_toward(p, aim):
+        """Turn the (left / right only) hero sprite toward a sideways attack or skill."""
+        if abs(aim[0]) > 0.3 * (math.hypot(*aim) or 1):
+            p.flip = aim[0] < 0
+
+    @staticmethod
+    def unit(v):
+        n = math.hypot(*v) or 1.0
+        return (v[0] / n, v[1] / n)
+
+    def cursor_world(self):
+        """The mouse cursor in world coordinates of the current place."""
+        mx, my = self.display.mouse_pos()          # the window may be scaled: canvas coordinates
+        if self.mode == "village":
+            camx, camy = self.surface.camera()
+            return mx * sw_mod.SCREEN_W / SCREEN_W + camx, my * sw_mod.SCREEN_H / SCREEN_H + camy
+        return mx + int(round(self.cam_x)), my + int(round(self.cam_y))
+
+    def cursor_aim(self, p):
+        """(aim, reach): direction from the hero to the cursor and how far it is.
+        Without a mouse over the window, skills go the way the hero faces."""
+        if not pygame.mouse.get_focused():
+            return p.face, None
+        wx, wy = self.cursor_world()
+        ax, ay = wx - p.x, wy - (p.y - 14)          # 14: projectiles fly at body height
+        if math.hypot(ax, ay) < 4:
+            return p.face, None
+        return (ax, ay), math.hypot(wx - p.x, wy - p.y)
 
     def near_exit(self) -> bool:
         ex, ey = self.dungeon.exit_pos
@@ -3097,8 +3334,10 @@ class Game:
         """Draw the procedural surface world, scaled to the game window."""
         sw, pc = self.surface, self.pc
         sw.hp, sw.max_hp, sw.potions = pc.hp, pc.max_hp, pc.potions
+        sw.cam_shake = self.juice.offset()
         sw.draw()
         pygame.transform.smoothscale(self.surface_canvas, (SCREEN_W, SCREEN_H), self.screen)
+        self.juice.draw_screen(self.screen)
         if self.fade > 0:
             self.fade_surf.set_alpha(int(255 * min(1.0, self.fade)))
             self.screen.blit(self.fade_surf, (0, 0))
@@ -3107,7 +3346,8 @@ class Game:
         if self.mode == "village":
             self.draw_village(t)
             return
-        cx, cy = int(round(self.cam_x)), int(round(self.cam_y))
+        sx, sy = self.juice.offset()
+        cx, cy = int(round(self.cam_x)) + sx, int(round(self.cam_y)) + sy
         art = self.dungeon.art
         glows = self.dungeon.draw_world(self.screen, cx, cy, t, self.player)
         glows += self.interact.glows(cx, cy)
@@ -3115,7 +3355,8 @@ class Game:
         # monsters, projectiles, barriers and the sword slash (drawn before lighting)
         self.enc.draw(self.screen, cx, cy, t, self.player, self.pc)
         self.interact.draw_fx(self.screen, cx, cy, t)
-        self.player.blink = self.pc.blinking()
+        self.player.blink = self.pc.blinking() and not self.pc.dead
+        self.player.dead = self.pc.dead
         psx, psy = int(self.player.x - cx), int(self.player.y - cy)
 
         self.screen.blit(art.light, (psx - SCREEN_W, psy - 14 - SCREEN_H))
@@ -3133,7 +3374,10 @@ class Game:
 
         self.motes.update(dt, dcx, dcy, t)
         self.motes.draw(self.screen, t)
+        self.loot.draw(self.screen, cx, cy, t, hero=self.player)
+        self.juice.draw_world(self.screen, cx, cy, t)
         self.fx.draw(self.screen, cx, cy, t, self.mid_font)        # skills glow through the dark
+        self.juice.draw_screen(self.screen)
 
         self.draw_hud(cx, cy, t)
         if self.show_map:
@@ -3164,8 +3408,11 @@ class Game:
 
     def draw_hero_panel(self, scr, x, y):
         lv, have, need = level_progress(self.save.xp)
+        b = self.pc.barrier
+        shield = b.absorb / b.max_absorb if b is not None and not b.done and b.absorb > 0 else 0.0
         return self.hero_hud.draw(scr, x, y, self.pc, name=story.hero_name(), level=lv, xp=(have, need),
-                                  portrait=self.hero_portrait, class_name=self.pc.class_name)
+                                  portrait=self.hero_portrait, class_name=self.pc.class_name,
+                                  points=self.save.stat_points, shield=shield)
 
     def draw_skill_bar(self, scr, bottom):
         W = scr.get_width()
@@ -3181,6 +3428,8 @@ class Game:
         return bottom
 
     def draw_village_fx(self, scr, camx, camy, t):
+        self.loot.draw(scr, camx, camy, t, hero=self.surface.player)
+        self.juice.draw_world(scr, camx, camy, t)
         self.fx.draw(scr, camx, camy, t, self.mid_font)
 
     def draw_dungeon_extras(self, cx, cy, t):
@@ -3252,21 +3501,32 @@ class Game:
             self.autosave()
 
     def village_xp(self, amount, x, y):
+        if amount < 30:                             # a monster (lairs, events and raids give more)
+            self.juice.puff(x, y)
+            self.sfx.play("enemy_die")
         self.gain_xp(amount, x, y, self.wilds.floaters)
+        tier = self.save.stage + 1
+        self.roll_loot(x, y, tier, chance=0.5 if amount >= 30 else 0.05)    # lairs / events drop more
 
     def village_survival(self, dt):
-        """Out of combat Himmel slowly heals; if he falls in the wilds, Merlin pulls him back."""
+        """Out of combat the hero slowly heals; after a fall in the wilds, Merlin brings them home."""
         pc, p = self.pc, self.surface.player
         if pc.dead:
             if self.night.active:
                 return                                  # the raid handles its own defeat
+            if self.fall_t == 0.0:
+                self.sfx.play("death")
+            self.fall_t += dt
+            if self.fall_t < 1.4:                       # lie there a moment before Merlin comes
+                return
+            self.fall_t = 0.0
             lost = min(30, self.save.gold // 10)
             self.save.gold -= lost
             pc.reset()
             p.x, p.y = night_raid.WARD_CENTER[0] - 40, night_raid.WARD_CENTER[1] + 60
             self.wilds.calm()
-            self.surface.toast("Himmel fell... Merlin carried him home." + ("  -%d gold" % lost if lost else ""),
-                               (255, 170, 150))
+            self.surface.toast("%s fell... Merlin carried you home." % story.hero_name()
+                               + ("  -%d gold" % lost if lost else ""), (255, 170, 150))
             sm = getattr(self.surface, "merlin", None)
             if sm is not None:
                 sm.x, sm.y = p.x - 30, p.y + 6
@@ -3285,17 +3545,14 @@ class Game:
         self.wilds.player_swing(player, dx, dy, dmg)
 
     def village_attack(self, aim=None):
-        """Sword swing in the overworld."""
+        """Basic attack in the overworld (sword, arcane bolt or arrow)."""
         pc = self.pc
         if pc.dead or pc.cd > 0:
             return
         p = self.surface.player
-        if aim is None:            # Space / J: strike the way Himmel is facing
+        if aim is None:            # Space / J: strike the way the hero is facing
             aim = {"up": (0, -1), "down": (0, 1)}.get(p.facing, (-1, 0) if p.flip else (1, 0))
-        self.sfx.play("swing")
-        before = self.target_hp()
-        pc.try_attack(p, self, aim)
-        self.energy_from_hits(before)
+        self.hero_attack(p, self, aim)
 
     def handle_interact_events(self):
         for ev in self.interact.pop_events():
@@ -3326,12 +3583,13 @@ class Game:
         # a saved hero (name + class) can always be continued until the story is finished
         return self.has_save and "finished" not in self.save.flags
 
-    PAUSE_ITEMS = (("RESUME", "resume"), ("SETTINGS", "settings"), ("SAVE & QUIT TO MENU", "menu"),
+    PAUSE_ITEMS = (("RESUME", "resume"), ("CHARACTER", "character"), ("SETTINGS", "settings"),
+                   ("SAVE & QUIT TO MENU", "menu"),
                    ("QUIT GAME", "quit"))
 
     def pause_rects(self):
-        w, h, gap = 360, 54, 12
-        top = SCREEN_H // 2 - 70
+        w, h, gap = 360, 50, 10                      # five buttons fit inside the panel
+        top = SCREEN_H // 2 - 100
         return [pygame.Rect(SCREEN_W // 2 - w // 2, top + i * (h + gap), w, h) for i in range(len(self.PAUSE_ITEMS))]
 
     def draw_pause(self):
@@ -3343,7 +3601,7 @@ class Game:
             self.screen.blit(canvas, (ox, oy))
             return
         ui_widgets.dim(self.screen, 165)
-        panel = pygame.Rect(SCREEN_W // 2 - 230, SCREEN_H // 2 - 190, 460, 400)
+        panel = pygame.Rect(SCREEN_W // 2 - 230, SCREEN_H // 2 - 220, 460, 460)
         ui_widgets.stone_panel(self.screen, panel)
         ui_widgets.title_plate(self.screen, (SCREEN_W // 2, panel.y + 6), "PAUSED")
         s = self.save
@@ -3356,10 +3614,14 @@ class Game:
 
     def pause_action(self, action):
         """Returns False when the game should quit."""
+        self.sfx.play("ui_select")
         if action == "resume":
             self.paused = False
+        elif action == "character":
+            self.paused = False
+            self.open_sheet()
         elif action == "settings":
-            self.pause_settings = SettingsScreen(self.settings)
+            self.pause_settings = SettingsScreen(self.settings, play=self.sfx.play)
         elif action == "menu":
             self.return_to_menu()
         elif action == "quit":
@@ -3377,18 +3639,23 @@ class Game:
                 data["pos"] = (event.pos[0] - ox, event.pos[1] - oy)
                 ev = pygame.event.Event(event.type, data)
             result = self.pause_settings.handle_event(ev)
-            if result == SETTINGS_BACK:
+            if result == SETTINGS_BACK:          # Cancel / Esc: nothing more to do
                 self.pause_settings = None
+            elif result == VIDEO_CHANGED:        # Apply, with a new window
+                self.reopen_window()
                 self.settings_changed()
-            elif result == VIDEO_CHANGED:
-                self.screen = self.settings.apply_display((SCREEN_W, SCREEN_H))
+            elif result == APPLIED:
+                self.settings_changed()
             return True
         if key == pygame.K_ESCAPE:
             self.paused = False
+            self.sfx.play("ui_back")
         elif key in (pygame.K_UP, pygame.K_w):
             self.pause_sel = (self.pause_sel - 1) % len(self.PAUSE_ITEMS)
+            self.sfx.play("ui_move")
         elif key in (pygame.K_DOWN, pygame.K_s):
             self.pause_sel = (self.pause_sel + 1) % len(self.PAUSE_ITEMS)
+            self.sfx.play("ui_move")
         elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
             return self.pause_action(self.PAUSE_ITEMS[self.pause_sel][1])
         elif key == pygame.K_q:
@@ -3446,7 +3713,10 @@ class Game:
                 _kind, name, hero_class = result
                 self.begin_game(new=True, name=name, hero_class=hero_class)
             elif result[0] == "video":
-                self.screen = self.settings.apply_display((SCREEN_W, SCREEN_H))
+                self.reopen_window()
+                self.settings_changed_quiet()
+            elif result[0] == "applied":
+                self.settings_changed_quiet()
             return True
         if self.dialog is not None:          # a dialog swallows all other input
             if key == pygame.K_ESCAPE:
@@ -3463,6 +3733,11 @@ class Game:
         if self.journal is not None:
             if key is not None and not self.journal.handle_key(key):
                 self.journal = None
+            return True
+        if self.sheet is not None:           # the character screen takes keys and the mouse
+            if self.sheet.handle_event(event) == SHEET_CLOSE:
+                self.sheet = None
+                self.autosave()
             return True
         if self.victory:
             if key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -3482,6 +3757,9 @@ class Game:
         if key in (pygame.K_TAB, pygame.K_l) and self.fade_dir == 0:
             self.journal = Journal(self.save, self.quests, self.sfx)
             self.sfx.play("blip")
+            return True
+        if key in (pygame.K_i, pygame.K_c) and self.fade_dir == 0:
+            self.open_sheet()
             return True
 
         if self.mode == "village":
@@ -3556,6 +3834,19 @@ class Game:
                 self.sfx.play("potion")
         return True
 
+    def reopen_window(self):
+        """Settings changed the display: make the window again (the canvas stays the same)."""
+        self.screen = self.display.open(self.settings)
+
+    def draw_fps(self):
+        """Settings > Video > Show FPS: a small counter in the top-right corner."""
+        if not self.settings.show_fps:
+            return
+        img = self.small_font.render("%d FPS" % round(self.clock.get_fps()), True, (200, 255, 200))
+        x = SCREEN_W - img.get_width() - 8
+        self.screen.fill((0, 0, 0), (x - 4, 2, img.get_width() + 8, img.get_height() + 4))
+        self.screen.blit(img, (x, 4))
+
     def settings_changed_quiet(self):
         """The home screen's Settings may have changed keys or volume: pick them up."""
         self.build_keys()
@@ -3566,13 +3857,13 @@ class Game:
         t = 0.0
         self.fade_dir = -1
         while running:
-            dt = min(self.clock.tick(FPS) / 1000.0, 0.05)
+            dt = min(self.clock.tick(self.settings.frame_cap()) / 1000.0, 0.05)    # 0 = no limit
             t += dt
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif not self.handle_event(event):
+                elif not self.handle_event(self.display.map_event(event)):    # mouse in canvas coordinates
                     running = False
 
             # screen fades keep running behind the menus
@@ -3595,12 +3886,17 @@ class Game:
             playing = self.state == "playing" and not self.paused and not self.victory
             if self.state == "playing":
                 self.hero_hud.update(dt, self.pc)        # also behind dialogs, so the bars are never empty
+                if not self.paused:
+                    self.juice.update(dt)
             for tt in self.toasts:
                 tt[2] -= dt
             self.toasts = [x for x in self.toasts if x[2] > 0]
             if self.shop is not None:
                 self.shop.update(dt)
-            menu = self.dialog is not None or self.shop is not None or self.journal is not None
+            if self.sheet is not None:
+                self.sheet.update(dt)
+            menu = (self.dialog is not None or self.shop is not None or self.journal is not None
+                    or self.sheet is not None)
             if self.mode == "village" and playing and menu:
                 self.surface.update_life(dt)          # the village keeps living behind menus
             if self.dialog is not None:
@@ -3610,8 +3906,10 @@ class Game:
                     self.dialog = None
                     if after:
                         after()
-            elif self.shop is not None or self.journal is not None:
+            elif self.shop is not None or self.journal is not None or self.sheet is not None:
                 pass
+            elif playing and self.juice.paused():
+                pass                                     # hit-pause: the world holds its breath
             elif playing:
                 self.title_t += dt
                 keys = pygame.key.get_pressed()
@@ -3628,7 +3926,8 @@ class Game:
                     self.surface.update(dt)
                     free = self.fade_dir == 0 and self.surface.state == "play"
                     self.pc.update(dt)
-                    self.surface.player.blink = self.pc.blinking()
+                    self.surface.player.blink = self.pc.blinking() and not self.pc.dead
+                    self.surface.player.dead = self.pc.dead
                     self.night.update(dt, free)
                     self.wilds.update(dt, free)
                     if self.mode == "village":
@@ -3648,6 +3947,9 @@ class Game:
             for name in self.enc.sound_queue:
                 self.sfx.play(name)
             self.enc.sound_queue.clear()
+            goblins = (playing and self.mode == "dungeon" and not self.pc.dead and self.enc.locked
+                       and any(getattr(e, "skin", None) in GOBLIN_SKINS for e in self.enc.enemies))
+            self.sfx.ambience("goblin_ambience", goblins)     # their chatter while goblins hold the room
 
             tx, ty = self.camera_target()
             k = min(1.0, dt * 8)
@@ -3670,20 +3972,28 @@ class Game:
             if self.state == "menu":
                 self.front.update(dt)
                 self.front.draw(self.screen)
-                pygame.display.flip()
+                if self.menu_fade > 0:                  # the home screen fades in
+                    self.menu_fade = max(0.0, self.menu_fade - dt * 2.5)
+                    self.fade_surf.set_alpha(int(255 * self.menu_fade))
+                    self.screen.blit(self.fade_surf, (0, 0))
+                self.draw_fps()
+                self.display.present()
                 continue
             self.render(t, dcx, dcy, dt)
             if self.shop is not None and self.dialog is None:
                 self.shop.draw(self.screen, t)
             if self.journal is not None and self.dialog is None:
                 self.journal.draw(self.screen, t)
+            if self.sheet is not None and self.dialog is None:
+                self.sheet.draw(self.screen)
             if self.dialog is not None:
                 self.dialog.draw(self.screen, t)
             elif self.victory:
                 self.draw_victory(t)
             elif self.paused:
                 self.draw_pause()
-            pygame.display.flip()
+            self.draw_fps()
+            self.display.present()
 
         pygame.quit()
         return 0

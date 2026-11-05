@@ -66,7 +66,8 @@ ICON_SIZE = 32
 
 class MainMenu:
     def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H, buttons=None, subtitle=SUBTITLE,
-                 info=None):
+                 info=None, heroes=None):
+        self.heroes = list(heroes or [])                    # animated heroes (HeroSprite); else hero.png
         self.width = width
         self.height = height
         self.buttons = list(buttons or DEFAULT_BUTTONS)     # [(label, action, icon), ...]
@@ -159,13 +160,33 @@ class MainMenu:
         else:
             self._draw_fallback_scene(surface)
 
+    HERO_TURN = 4.0          # s each hero stands there when they take turns
+
     def _draw_hero(self, surface):
+        if self.heroes:
+            self._draw_animated_hero(surface)
+            return
         hero = get_image("hero.png")
         if hero is None:
             return
         bob = 1 if math.sin(self.time * 2.5) > 0 else 0          # gentle breathing
         fx, fy = HERO_FEET
         surface.blit(hero, (fx - hero.get_width() // 2, fy - hero.get_height() - bob))
+
+    def _draw_animated_hero(self, surface):
+        """The saved hero (or the three heroes taking turns), facing the buttons."""
+        n = len(self.heroes)
+        i = int(self.time / self.HERO_TURN) % n
+        fx, fy = HERO_FEET
+        if n == 1:
+            self.heroes[0].draw(surface, fx, fy, left=True)
+            return
+        into = self.time % self.HERO_TURN                  # fade between heroes
+        alpha = min(1.0, into / 0.3, (self.HERO_TURN - into) / 0.3)
+        layer = pygame.Surface((360, 300), pygame.SRCALPHA)
+        self.heroes[i].draw(layer, 180, 290, left=True)
+        layer.set_alpha(int(255 * max(0.0, alpha)))
+        surface.blit(layer, (fx - 180, fy - 290))
 
     def _draw_frame(self, surface):
         frame = get_image("screen_frame.png")

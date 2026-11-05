@@ -9,7 +9,9 @@ can treat him like any other monster:
     boss.take_damage(n); boss.dead; boss.hp; boss.max_hp
     boss.draw(surface, cam_x, cam_y)
 
-Numbers come from boss_config.IN_GAME.
+Numbers come from boss_config.IN_GAME. Phase 2 (boss_config PHASE2_*): at half HP he roars,
+can't be hurt for SUMMON_TIME, then take_summons() turns True once and Encounters spawns
+his minions around him.
 """
 try:
     from . import boss_config as cfg
@@ -39,7 +41,7 @@ class GoblinKingEnemy:
     def __init__(self, x, y, name="Valdur, Goblin King"):
         self.boss = GoblinKing(x, y, cfg.IN_GAME)
         self.boss.y -= self.boss.feet_offset          # GoblinKing.y is his body, not his feet
-        self.name = name
+        self._name = name
         self.radius = 34
         self.color = (126, 62, 52)
         self.damage = cfg.IN_GAME["damage"]["heavy"][12]
@@ -72,8 +74,34 @@ class GoblinKingEnemy:
     def state(self):
         return self.boss.state
 
+    @property
+    def name(self):
+        return self._name + (" - Enraged" if self.boss.phase == 2 else "")
+
+    # ---- phase 2 (at half HP he roars and the room spawns his minions) ---------------
+    @property
+    def phase(self):
+        return self.boss.phase
+
+    @property
+    def summoning(self):
+        """True while he roars (he can't be hurt)."""
+        return self.boss.summoning
+
+    def take_summons(self):
+        """True once, the moment the roar ends: the room should spawn cfg.PHASE2_SUMMONS."""
+        if self.boss.summon_ready:
+            self.boss.summon_ready = False
+            return True
+        return False
+
+    def pop_sounds(self):
+        """Sound names he made since the last call (axe swing, ground slam)."""
+        out, self.boss.sounds = self.boss.sounds, []
+        return out
+
     def take_damage(self, amount):
-        if not self.dead:
+        if not self.dead and not self.summoning:
             self.boss.take_damage(amount)
             self.hit_flash = 0.12
 

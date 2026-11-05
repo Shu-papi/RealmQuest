@@ -114,10 +114,11 @@ class Mob(Enemy):
         if self.aggro:
             self.face_x = 1 if player.x > self.x else -1
             if dp > self.radius + 22:
-                self._move(player.x - self.x, player.y - self.y, dt, ground, 1.0)
+                if self._move(player.x - self.x, player.y - self.y, dt, ground, 1.0):
+                    self.walked(dt)           # only chasers hop audibly, not far-off roamers
             elif self.attack_cd <= 0 and pc.hurt(self.damage, player, ground, self.x, self.y):
-                self.attack_cd = 0.9
-                wilds.sfx.play("hurt")
+                self.attack_cd = 0.9          # the Game plays the hurt sound (PlayerCombat.hits)
+                self.noise("attack")
             return
         if not self.aggro and self.hp < self.max_hp and dh < 40:
             self.hp = min(self.max_hp, self.hp + 4 * dt)       # licks its wounds at home
@@ -262,6 +263,7 @@ class Wilds:
             for m in pack.mobs:
                 if near or m.aggro:
                     m.step(dt, player, ground, pc, self)
+                    self._hear(m)
             for m in pack.mobs:
                 if m.dead and not getattr(m, "counted", False):
                     m.counted = True
@@ -290,6 +292,7 @@ class Wilds:
                     lr.spawned.append(m)
             for m in lr.spawned:
                 m.step(dt, player, ground, pc, self)
+                self._hear(m)
                 if m.dead and not getattr(m, "counted", False):
                     m.counted = True
                     self._kill(m)
@@ -304,6 +307,10 @@ class Wilds:
                 self.world.toast("%s destroyed!  +%d gold" % (lr.name, gold), (255, 214, 120))
                 self.sfx.play("clear")
         self._update_event(dt, player, pc, ground)
+
+    def _hear(self, m):
+        for name in m.pop_sounds():
+            self.sfx.play(name)
 
     # ---- world events ---------------------------------------------------------------------
     def _tier_for_player(self):
@@ -378,6 +385,7 @@ class Wilds:
                             ev["cart_hp"] -= m.damage
                     continue
             m.step(dt, player, ground, pc, self)
+            self._hear(m)
         for m in ev["mobs"]:
             if m.dead and not getattr(m, "counted", False):
                 m.counted = True

@@ -796,9 +796,7 @@ class Interactables:
                 ptx, pty = int(player.x // TILE), int(player.y // TILE)
                 if (ptx, pty) in s["cells"]:
                     fx, fy = ptx * TILE + TILE // 2, pty * TILE + TILE // 2
-                    if pc.hurt(1 + self.tier, player, d, fx, fy - 6):
-                        self._sound("hurt")
-                        self.floaters.append([player.x, player.y - 50, "-%d" % (1 + self.tier), 0.8, (255, 120, 110)])
+                    pc.hurt(1 + self.tier, player, d, fx, fy - 6)   # the Game shows the number and plays the sound
 
         # keepsake
         k = self.keepsake

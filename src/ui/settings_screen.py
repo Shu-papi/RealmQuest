@@ -10,8 +10,12 @@ settings_screen.py - The Settings window (Audio, Video, Controls tabs).
     # every frame, while it's open:
     for event in pygame.event.get():
         result = screen_ui.handle_event(event)
-        if result == "back":           close it (settings are already saved)
-        if result == "video_changed":  call settings.apply_display(...) (fullscreen changed)
+        if result == "back":           close it (Cancel / Esc / X: unapplied changes are dropped)
+        if result == "applied":        Apply was pressed: settings changed and saved (keys, volume)
+        if result == "video_changed":  Apply changed the window too: re-open it (display mode,
+                                       resolution or VSync)
+
+Changes are made on a copy and only reach `settings` when the player presses APPLY.
     screen_ui.update(dt)
     menu.draw(screen)                  # whatever is behind it (it gets dimmed)
     screen_ui.draw(screen)
@@ -21,8 +25,9 @@ CONTROLS
     Up / Down            choose a row
     Left / Right         change a volume, or pick On / Off
     Enter                change a key (then press the new key), or toggle
-    Esc                  close (or cancel while changing a key)
-    Mouse                drag sliders, click On/Off, click a key box to change it
+    Esc                  cancel and close (or cancel while changing a key)
+    Down past the last row reaches the APPLY / CANCEL buttons
+    Mouse                drag sliders, click On/Off, click a key box to change it, APPLY / CANCEL
 
 PICTURES: panel.png, title_plate.png, button.png, button_selected.png,
           icon_sound.png, icon_video.png, icon_controls.png  (all optional)
@@ -31,12 +36,13 @@ import math
 
 import pygame
 
-from . import theme
+from . import theme, widgets
 from .assets import get_image, get_font, nine_slice
 from .settings_data import KEY_ACTIONS, VOLUMES
 from .text import draw_text
 
 BACK = "back"
+APPLIED = "applied"
 VIDEO_CHANGED = "video_changed"
 
 #        label        tab id      icon
@@ -47,7 +53,10 @@ TABS = [
 ]
 VOLUME_LABELS = {"master_volume": "Master Volume", "music_volume": "Music Volume",
                  "sfx_volume": "SFX Volume"}
-VIDEO_ROWS = [("fullscreen", "Fullscreen"), ("screen_shake", "Screen Shake")]
+VIDEO_ROWS = [("display_mode", "Display"), ("resolution", "Resolution"), ("vsync", "VSync"),
+              ("fps_cap", "FPS Limit"), ("show_fps", "Show FPS"), ("screen_shake", "Screen Shake")]
+CHOICES = ("display_mode", "resolution", "fps_cap")      # Left / Right cycle through options
+REMAKE_WINDOW = ("display_mode", "resolution", "vsync")   # these need the window re-made
 RESET_ROW = "reset_keys"
 VOLUME_STEP = 5
 
@@ -58,14 +67,20 @@ PLATE_CENTER = (480, 100)
 CLOSE = (782, 84, 40, 40)            # sits on the top-right corner of the panel
 TAB_X, TAB_Y, TAB_W, TAB_H, TAB_GAP = 182, 150, 176, 52, 12
 CONTENT_X, CONTENT_Y, CONTENT_W = 384, 150, 380
-ROW_H = {"audio": 70, "video": 70, "controls": 29}
+ROW_H = {"audio": 70, "video": 58, "controls": 29}
 HINT_Y = 512
+APPLY_RECT = (182, 404, 176, 44)       # under the tabs
+CANCEL_RECT = (182, 456, 176, 44)
+BUTTONS = ("apply", "cancel")
 
 
 class SettingsScreen:
-    def __init__(self, settings, save_path=None):
-        self.settings = settings
+    def __init__(self, settings, save_path=None, play=None):
+        self.play = play                       # optional play(sound_name) for menu sounds
+        self.target = settings                 # the real settings: changed only by Apply
+        self.settings = settings.copy()        # what the screen edits
         self.save_path = save_path            # None = the default place
+        self.button = None                     # keyboard focus on APPLY (0) / CANCEL (1)
         self.tab = 0
         self.row = 0
         self.rebinding = False                 # waiting for the player to press a new key
@@ -94,22 +109,71 @@ class SettingsScreen:
         self.rebinding = False
 
     def move(self, step):
-        self.row = (self.row + step) % len(self.rows())
+        """Up / Down. Past the last row: the APPLY and CANCEL buttons."""
+        n = len(self.rows())
+        if self.button is not None:
+            b = self.button + step
+            if 0 <= b < len(BUTTONS):
+                self.button = b
+            else:
+                self.button = None
+                self.row = 0 if b >= len(BUTTONS) else n - 1
+            return
+        r = self.row + step
+        if r >= n:
+            self.button = 0
+        elif r < 0:
+            self.button = len(BUTTONS) - 1
+        else:
+            self.row = r
+
+    @property
+    def dirty(self):
+        """Something was changed and not applied yet."""
+        return not self.settings.same_as(self.target)
+
+    def apply(self):
+        """APPLY: the edits become the real settings and are saved.
+        Returns VIDEO_CHANGED when the window must be re-made, APPLIED otherwise (None: no change)."""
+        if not self.dirty:
+            return None
+        remake = any(getattr(self.settings, n) != getattr(self.target, n) for n in REMAKE_WINDOW)
+        self.target.copy_from(self.settings)
+        self.target.apply_audio()
+        if self.save_path:
+            self.target.save(self.save_path)
+        else:
+            self.target.save()
+        return VIDEO_CHANGED if remake else APPLIED
+
+    def cancel(self):
+        """CANCEL / Esc / X: forget what wasn't applied and close."""
+        self.settings = self.target.copy()
+        self.rebinding = False
+        return BACK
 
     def adjust(self, direction):
         """Left (-1) / Right (+1) on the selected row. Returns VIDEO_CHANGED if needed."""
+        if self.button is not None:
+            self.button = (self.button + direction) % len(BUTTONS)
+            return None
         name = self.rows()[self.row]
         if self.tab_id == "audio":
             self.settings.set_volume(name, getattr(self.settings, name) + direction * VOLUME_STEP)
-            self.settings.apply_audio()
         elif self.tab_id == "video":
+            if name in CHOICES:
+                return self._cycle(name, direction)
             return self._set_toggle(name, direction < 0)      # left = On, right = Off
         return None
 
     def activate(self):
-        """Enter on the selected row."""
+        """Enter on the selected row (or button)."""
+        if self.button is not None:
+            return self.apply() if BUTTONS[self.button] == "apply" else self.cancel()
         name = self.rows()[self.row]
         if self.tab_id == "video":
+            if name in CHOICES:
+                return self._cycle(name, +1)
             return self._set_toggle(name, not getattr(self.settings, name))
         if self.tab_id == "controls":
             if name == RESET_ROW:
@@ -125,23 +189,26 @@ class SettingsScreen:
         self.rebinding = False
 
     def close(self):
-        if self.save_path:
-            self.settings.save(self.save_path)
-        else:
-            self.settings.save()
-        return BACK
+        """Esc / the X button: same as CANCEL."""
+        return self.cancel()
 
     def _set_toggle(self, name, value):
-        if getattr(self.settings, name) == value:
-            return None
         setattr(self.settings, name, value)
-        return VIDEO_CHANGED if name == "fullscreen" else None
+        return None
+
+    def _cycle(self, name, step):
+        self.settings.cycle(name, step)
+        return None
+
+    def arrow_rects(self, index):
+        """The < and > buttons of a choice row."""
+        x, y, w, h = self.row_rect(index)
+        return (x + 150, y + 12, 30, h - 24), (x + w - 30, y + 12, 30, h - 24)
 
     def _set_volume_from_x(self, index, x):
         tx, _, tw, _ = self.slider_track(index)
         name = VOLUMES[index]
         self.settings.set_volume(name, (x - tx) / tw * 100)
-        self.settings.apply_audio()
 
     # ---------- where things are on screen ----------
 
@@ -167,6 +234,21 @@ class SettingsScreen:
     # ---------- input ----------
 
     def handle_event(self, event):
+        """Input -> result (BACK / APPLIED / VIDEO_CHANGED / None), with menu sounds if `play` is set."""
+        before = (self.tab, self.row, self.button, self.rebinding, self.settings.to_dict())
+        result = self._handle(event)
+        if self.play is not None:
+            if result in (APPLIED, VIDEO_CHANGED):
+                self.play("ui_select")
+            elif result == BACK:
+                self.play("ui_back")
+            elif before[:4] != (self.tab, self.row, self.button, self.rebinding):
+                self.play("ui_move")
+            elif before[4] != self.settings.to_dict():
+                self.play("ui_move")
+        return result
+
+    def _handle(self, event):
         if event.type == pygame.KEYDOWN:
             if self.rebinding:
                 self.press_key_while_rebinding(pygame.key.name(event.key))
@@ -194,17 +276,24 @@ class SettingsScreen:
             if self.dragging is not None:
                 self._set_volume_from_x(self.dragging, event.pos[0])
             elif not self.rebinding:
+                for i, rect in enumerate((APPLY_RECT, CANCEL_RECT)):
+                    if _inside(event.pos, rect):
+                        self.button = i
+                        return None
                 for i in range(len(self.rows())):
                     if _inside(event.pos, self.row_rect(i)):
-                        self.row = i
+                        self.row, self.button = i, None
         return None
 
     def _click(self, pos):
         if self.rebinding:
             self.rebinding = False             # clicking anywhere cancels
             return None
-        if _inside(pos, CLOSE):
-            return self.close()
+        if _inside(pos, CLOSE) or _inside(pos, CANCEL_RECT):
+            return self.cancel()
+        if _inside(pos, APPLY_RECT):
+            self.button = 0
+            return self.apply()
         for i, rect in enumerate(self.tab_rects()):
             if _inside(pos, rect):
                 self.switch_tab(index=i)
@@ -216,6 +305,11 @@ class SettingsScreen:
                     self.row, self.dragging = i, i
                     self._set_volume_from_x(i, pos[0])
                     return None
+            elif self.tab_id == "video" and name in CHOICES:
+                left, right = self.arrow_rects(i)
+                if _inside(pos, left) or _inside(pos, right) or _inside(pos, self.row_rect(i)):
+                    self.row = i
+                    return self._cycle(name, -1 if _inside(pos, left) else +1)
             elif self.tab_id == "video":
                 on_rect, off_rect = self.toggle_rects(i)
                 if _inside(pos, on_rect) or _inside(pos, off_rect):
@@ -241,10 +335,19 @@ class SettingsScreen:
         self._draw_tabs(surface)
         {"audio": self._draw_audio, "video": self._draw_video,
          "controls": self._draw_controls}[self.tab_id](surface)
+        self._draw_buttons(surface)
         hint = "PRESS A KEY  -  ESC TO CANCEL" if self.rebinding else \
-            "TAB: SWITCH TAB   ARROWS: CHANGE   ESC: BACK"
+            "TAB: SWITCH TAB   ARROWS: CHANGE   ESC: CANCEL"
         draw_text(surface, hint, get_font(theme.FONT_SMALL), theme.TEXT_DIM,
                   (PANEL[0] + PANEL[2] // 2, HINT_Y), outline=1, center=True)
+
+    def _draw_buttons(self, surface):
+        dirty = self.dirty
+        if dirty:
+            draw_text(surface, "UNSAVED CHANGES", get_font(theme.FONT_SMALL), theme.TORCH_LIGHT,
+                      (APPLY_RECT[0] + APPLY_RECT[2] // 2, APPLY_RECT[1] - 16), outline=1, center=True)
+        widgets.button(surface, APPLY_RECT, "APPLY", selected=self.button == 0, enabled=dirty)
+        widgets.button(surface, CANCEL_RECT, "CANCEL", selected=self.button == 1)
 
     def _stretched(self, name, w, h, border):
         """nine_slice a picture once and keep it."""
@@ -310,7 +413,7 @@ class SettingsScreen:
     def _draw_audio(self, surface):
         font = get_font(theme.FONT_LABEL)
         for i, name in enumerate(VOLUMES):
-            if i == self.row:
+            if i == self.row and self.button is None:
                 self._draw_row_highlight(surface, i)
             x, y, w, h = self.row_rect(i)
             draw_text(surface, VOLUME_LABELS[name], font, theme.TEXT, (x, y + h // 2),
@@ -330,10 +433,21 @@ class SettingsScreen:
     def _draw_video(self, surface):
         font = get_font(theme.FONT_LABEL)
         for i, (name, label) in enumerate(VIDEO_ROWS):
-            if i == self.row:
+            if i == self.row and self.button is None:
                 self._draw_row_highlight(surface, i)
             x, y, w, h = self.row_rect(i)
             draw_text(surface, label, font, theme.TEXT, (x, y + h // 2), outline=2, middle=True)
+            if name in CHOICES:
+                left, right = self.arrow_rects(i)
+                for rect, arrow in ((left, "<"), (right, ">")):
+                    rx, ry, rw, rh = rect
+                    pygame.draw.rect(surface, theme.OUTLINE, (rx - 2, ry - 2, rw + 4, rh + 4))
+                    pygame.draw.rect(surface, theme.WOOD_DARK, (rx, ry, rw, rh))
+                    draw_text(surface, arrow, font, theme.TEXT, (rx + rw // 2, ry + rh // 2), outline=2, center=True)
+                mid = (left[0] + left[2] + right[0]) // 2
+                draw_text(surface, self.settings.choice_text(name), font, theme.TORCH_LIGHT,
+                          (mid, y + h // 2), outline=2, center=True)
+                continue
             value = getattr(self.settings, name)
             for rect, text, is_on in zip(self.toggle_rects(i), ("ON", "OFF"), (True, False)):
                 active = value == is_on
@@ -349,7 +463,7 @@ class SettingsScreen:
         font = get_font(theme.FONT_LABEL)
         blink = math.sin(self.time * 8) > 0
         for i, (action, label, _) in enumerate(KEY_ACTIONS):
-            if i == self.row:
+            if i == self.row and self.button is None:
                 self._draw_row_highlight(surface, i)
             x, y, w, h = self.row_rect(i)
             draw_text(surface, label, font, theme.TEXT, (x, y + h // 2), outline=2, middle=True)
@@ -363,7 +477,7 @@ class SettingsScreen:
             draw_text(surface, key_text, font, theme.TEXT, (bx + bw // 2, by + bh // 2),
                       outline=2, center=True)
         i = len(KEY_ACTIONS)
-        if i == self.row:
+        if i == self.row and self.button is None:
             self._draw_row_highlight(surface, i)
         x, y, w, h = self.row_rect(i)
         draw_text(surface, "Reset to default keys", font, theme.TITLE, (x, y + h // 2 + 4),

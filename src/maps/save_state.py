@@ -19,6 +19,7 @@ except ImportError:
     from combat import PLAYER_MAX_HP, POTION_START
 
 from skills import classes as hero_classes      # combat.py put src/ on the import path
+from inventory.gear import Gear, attr_stats, ATTR_IDS, POINTS_PER_LEVEL   # noqa: E402
 
 DEFAULT_HERO_NAME = "Himmel"
 DEFAULT_HERO_CLASS = "warrior"
@@ -72,6 +73,12 @@ class SaveState:
     cleared: set = field(default_factory=set)     # surface dungeon ids: goblin / berserker / lich
     keepsakes: set = field(default_factory=set)   # same ids: Veil Anchors shattered (one per dungeon)
     flags: set = field(default_factory=set)       # story / NPC / treasure flags
+    gear: Gear = None                             # worn equipment + bag (inventory.gear)
+    alloc: dict = field(default_factory=dict)     # stat points spent: {"vit": 2, "pow": 1, ...}
+
+    def __post_init__(self):
+        if self.gear is None:
+            self.gear = Gear(self.hero_class)
 
     # ---- derived stats ------------------------------------------------------
     @property
@@ -86,8 +93,34 @@ class SaveState:
 
     @property
     def max_hp(self) -> int:
-        return (self.base_hp + ARMOR_HP * self.armor_lv + HP_PER_LEVEL * (self.level - 1)
-                + sum(v for f, v in BONUS_HP.items() if f in self.flags))
+        return int(self.base_hp + ARMOR_HP * self.armor_lv + HP_PER_LEVEL * (self.level - 1)
+                   + sum(v for f, v in BONUS_HP.items() if f in self.flags) + self.bonus_stats().get("hp", 0))
+
+    # ---- stat points ----------------------------------------------------------
+    @property
+    def points_earned(self) -> int:
+        return POINTS_PER_LEVEL * (self.level - 1)
+
+    @property
+    def stat_points(self) -> int:
+        """Unspent stat points (every level gives POINTS_PER_LEVEL)."""
+        return max(0, self.points_earned - sum(self.alloc.values()))
+
+    def spend_point(self, attr: str) -> bool:
+        if attr not in ATTR_IDS or self.stat_points <= 0:
+            return False
+        self.alloc[attr] = self.alloc.get(attr, 0) + 1
+        return True
+
+    def reset_points(self):
+        self.alloc.clear()
+
+    def bonus_stats(self) -> dict:
+        """Gear + stat points, summed: {"hp", "atk", "def", "aspd", "spd", "crit", "res", "regen"}."""
+        out = dict(self.gear.totals())
+        for k, v in attr_stats(self.alloc).items():
+            out[k] = out.get(k, 0) + v
+        return out
 
     def level_damage(self) -> int:
         return (self.level - 1) // 3
@@ -107,8 +140,12 @@ class SaveState:
         """Push the class and upgrades onto a PlayerCombat."""
         if getattr(pc, "character_class", None) != self.hero_class:
             pc.apply_class(self.hero_class)
+        if self.gear.character_class != self.hero_class:
+            self.gear.character_class = self.hero_class
+        bonus = self.bonus_stats()
         pc.max_hp = self.max_hp
-        pc.dmg_bonus = self.sword_lv + self.level_damage()
+        pc.dmg_bonus = self.sword_lv + self.level_damage() + bonus.get("atk", 0)
+        pc.apply_stats(bonus)
         pc.potions = self.potions
         pc.hp = min(pc.hp, pc.max_hp)
 
@@ -124,19 +161,22 @@ class SaveState:
         self.hero_class = hero_class if hero_class in hero_classes.CLASS_STATS else DEFAULT_HERO_CLASS
         for name in ("gold", "potions", "sword_lv", "armor_lv", "boots_lv", "herb_lv", "raids", "xp"):
             setattr(self, name, getattr(fresh, name))
+        self.gear = Gear(self.hero_class)
+        self.alloc.clear()
         self.cleared.clear()
         self.keepsakes.clear()
         self.flags.clear()
 
     def to_dict(self) -> dict:
         return {
-            "version": 2,
+            "version": 3,
             "hero_name": self.hero_name, "hero_class": self.hero_class,
             "gold": self.gold, "potions": self.potions,
             "sword_lv": self.sword_lv, "armor_lv": self.armor_lv,
             "boots_lv": self.boots_lv, "herb_lv": self.herb_lv, "raids": self.raids, "xp": self.xp,
             "cleared": sorted(self.cleared), "keepsakes": sorted(self.keepsakes),
             "flags": sorted(self.flags),
+            "gear": self.gear.to_dict(), "alloc": dict(self.alloc),
         }
 
     def save(self, path: Path | None = None) -> bool:
@@ -176,6 +216,16 @@ class SaveState:
             v = data.get(name)
             if isinstance(v, list):
                 getattr(s, name).update(str(x) for x in v)
+        # saves from before gear: the class's starter weapon
+        s.gear = Gear.from_dict(data["gear"], s.hero_class) if "gear" in data else Gear(s.hero_class)
+        alloc = data.get("alloc")
+        if isinstance(alloc, dict):
+            s.alloc.update({k: v for k, v in alloc.items() if k in ATTR_IDS and isinstance(v, int) and v > 0})
+            while sum(s.alloc.values()) > s.points_earned:      # never more spent than earned
+                k = max(s.alloc, key=s.alloc.get)
+                s.alloc[k] -= 1
+                if s.alloc[k] <= 0:
+                    del s.alloc[k]
         if "xp" not in data:
             # saves from before levels existed: don't strand the player behind a level gate
             nxt = next((d for d in ("goblin", "berserker", "lich") if d not in s.cleared), None)

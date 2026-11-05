@@ -7,7 +7,10 @@ in dungeons.
     fx     = SkillFX()
 
     caster.update(dt); pools.update(dt)
-    caster.cast("skill", pools, x, y, aim, power, fx)   # slot: "skill" / "skill_2" / "special"
+    caster.cast("skill", pools, x, y, aim, power, fx, reach=dist)   # slot: "skill" / "skill_2" / "special"
+                       # aim = toward the cursor; reach = how far away the cursor is (Meteor and
+                       # Rain of Arrows land there, up to GROUND_REACH)
+    spawn_basic(fx, "bolt", x, y, aim, dmg, spec)        # the Mage's / Archer's basic shot
     fx.update(dt, targets, owner, blocked)               # moves projectiles, deals damage
     fx.draw(surface, cam_x, cam_y, t)
 
@@ -30,6 +33,7 @@ except ImportError:          # imported as a top-level module
 
 SLOTS = ("skill", "skill_2", "special")
 BODY = 14                    # sprites stand on (x, y); their middle is this far above
+GROUND_REACH = (40, 340)     # Meteor / Rain of Arrows land at the cursor, within this distance
 
 
 @dataclass(frozen=True)
@@ -45,8 +49,8 @@ class SkillDef:
 
 CLASS_SKILLS = {
     "warrior": [
-        SkillDef("whirlwind", "Whirlwind", "skill", 30, 4.0,
-                 "Spin with your sword and hit everything around you.", (236, 240, 255)),
+        SkillDef("blade_ward", "Blade Ward", "skill", 30, 9.0,
+                 "Swords spin around you: they cut monsters and guard you from hits.", (236, 240, 255)),
         SkillDef("shield_bash", "Shield Bash", "skill_2", 25, 6.0,
                  "Lunge forward and stun what you hit.", (214, 176, 84)),
         SkillDef("earthsplitter", "Earthsplitter", "special", 60, 25.0,
@@ -55,10 +59,10 @@ CLASS_SKILLS = {
     "mage": [
         SkillDef("fireball", "Fireball", "skill", 22, 1.6,
                  "A blazing orb that explodes on impact.", (255, 140, 50)),
-        SkillDef("frost_nova", "Frost Nova", "skill_2", 30, 7.0,
-                 "A ring of ice that chills and slows nearby foes.", (150, 220, 255)),
+        SkillDef("arcane_barrier", "Arcane Barrier", "skill_2", 30, 10.0,
+                 "A shield of light around you that soaks up damage.", (150, 200, 255)),
         SkillDef("meteor", "Meteor", "special", 70, 25.0,
-                 "SPECIAL: call a meteor down where you face.", (255, 90, 60)),
+                 "SPECIAL: call a meteor down on the cursor.", (255, 90, 60)),
     ],
     "archer": [
         SkillDef("arrow_volley", "Arrow Volley", "skill", 20, 2.2,
@@ -66,7 +70,7 @@ CLASS_SKILLS = {
         SkillDef("piercing_shot", "Piercing Shot", "skill_2", 30, 5.0,
                  "A charged arrow that passes through every enemy.", (170, 240, 160)),
         SkillDef("rain_of_arrows", "Rain of Arrows", "special", 60, 25.0,
-                 "SPECIAL: arrows rain on an area for three seconds.", (210, 230, 130)),
+                 "SPECIAL: arrows rain on the cursor for three seconds.", (210, 230, 130)),
     ],
 }
 
@@ -82,6 +86,16 @@ class Pools:
     def __init__(self, bars):
         self.bars = {name: [float(mx), float(mx), float(regen)] for name, mx, regen in bars}
         self.order = [name for name, _mx, _r in bars]
+        self.base = {name: (float(mx), float(regen)) for name, mx, regen in bars}
+
+    def set_bonus(self, name, extra_max=0.0, extra_regen=0.0):
+        """Gear / stat points: a bigger bar and faster regen (current value kept, capped)."""
+        if name not in self.bars:
+            return
+        mx, regen = self.base[name]
+        b = self.bars[name]
+        b[1], b[2] = mx + extra_max, regen + extra_regen
+        b[0] = min(b[0], b[1])
 
     def has(self, name):
         return name in self.bars
@@ -135,8 +149,9 @@ class SkillCaster:
         d = self.defs.get(slot)
         return d is not None and self.cd[slot] <= 0 and pools.can_spend(self.resource, d.cost)
 
-    def cast(self, slot, pools, x, y, aim, power, fx):
-        """Spend, start the cooldown and spawn the skill's effects. Returns the SkillDef or None."""
+    def cast(self, slot, pools, x, y, aim, power, fx, reach=None):
+        """Spend, start the cooldown and spawn the skill's effects. Returns the SkillDef or None.
+        `reach` is the distance to the cursor: ground-targeted skills land there."""
         if not self.can_cast(slot, pools):
             return None
         d = self.defs[slot]
@@ -145,7 +160,7 @@ class SkillCaster:
         ax, ay = aim
         n = math.hypot(ax, ay)
         ax, ay = (ax / n, ay / n) if n > 1e-6 else (0.0, 1.0)
-        SPAWN[d.id](fx, x, y, ax, ay, max(1, power), d)
+        SPAWN[d.id](fx, x, y, ax, ay, max(1, power), d, reach)
         fx.sounds.append(d.id)
         return d
 
@@ -278,10 +293,118 @@ class Burst(_Effect):
             _ring(surf, X, Y - BODY // 2, rr, (255, 220, 140), int(230 * k), 4, squash=0.75)
 
 
+class Barrier(_Effect):
+    """Arcane Barrier: a bubble on the hero that soaks up `absorb` damage for `duration` s.
+    The Game hands it to PlayerCombat.barrier, which spends `absorb` when the hero is hit."""
+
+    def __init__(self, x, y, absorb, duration, color):
+        self.x, self.y = x, y
+        self.absorb = self.max_absorb = absorb
+        self.life = self.total = duration
+        self.color = color
+        self.flash = 0.0
+        self.t = 0.0
+
+    def update(self, dt, fx, targets, owner, blocked):
+        self.t += dt
+        if owner is not None:
+            self.x, self.y = owner.x, owner.y
+        self.life -= dt
+        self.flash = max(0.0, self.flash - dt)
+        if self.absorb <= 0 or self.life <= 0:
+            self.done = True
+            if self.absorb <= 0:                      # broken: a little burst of light
+                fx.add(Burst(self.x, self.y, 40, 0, "boom", self.color, life=0.3))
+                fx.sounds.append("barrier_break")
+
+    def draw(self, surf, cx, cy, t):
+        X, Y = int(self.x - cx), int(self.y - cy - BODY - 4)
+        k = max(0.25, self.absorb / self.max_absorb)
+        fade = min(1.0, self.life / 0.6)                # fades out in its last moment
+        r = 34 + int(2 * math.sin(self.t * 5))
+        col = (255, 255, 255) if self.flash else self.color
+        layer = pygame.Surface((r * 2 + 8, r * 2 + 8), pygame.SRCALPHA)
+        c = r + 4
+        pygame.draw.circle(layer, (*col, int(50 * k * fade)), (c, c), r)
+        pygame.draw.circle(layer, (*col, int(210 * k * fade)), (c, c), r, 3)
+        for i in range(6):                              # runes drifting round the bubble
+            a = self.t * 1.6 + i * math.tau / 6
+            pygame.draw.circle(layer, (255, 255, 255, int(200 * fade)),
+                               (int(c + math.cos(a) * (r - 6)), int(c + math.sin(a) * (r - 6))), 2)
+        surf.blit(layer, (X - c, Y - c))
+
+
+class BladeWard(_Effect):
+    """Blade Ward: swords orbit the hero. Each blade cuts the monsters it touches (once per
+    target every HIT_EVERY s), they soak up `absorb` damage like a shield, and enemy shots
+    that fly into the ring are blocked (the Game reads fx.guards)."""
+
+    BLADES = 3
+    RADIUS = 52
+    HIT_EVERY = 0.5
+
+    def __init__(self, x, y, power, color, duration=6.0):
+        self.x, self.y = x, y
+        self.dmg = max(1, power)
+        self.absorb = self.max_absorb = 6 + 2 * power
+        self.life = self.total = duration
+        self.color = color
+        self.angle = 0.0
+        self.flash = 0.0
+        self.cool = {}
+
+    def blades(self):
+        for i in range(self.BLADES):
+            a = self.angle + i * math.tau / self.BLADES
+            yield a, self.x + math.cos(a) * self.RADIUS, self.y + math.sin(a) * self.RADIUS * 0.75
+
+    def update(self, dt, fx, targets, owner, blocked):
+        if owner is not None:
+            self.x, self.y = owner.x, owner.y
+        self.angle += 6.5 * dt
+        self.life -= dt
+        self.flash = max(0.0, self.flash - dt)
+        for k in list(self.cool):
+            self.cool[k] -= dt
+        for tg in targets:
+            if self.cool.get(id(tg), 0) > 0:
+                continue
+            r = getattr(tg, "radius", 12) + 16
+            if any(math.hypot(tg.x - bx, tg.y - by) <= r for _a, bx, by in self.blades()):
+                _hit(fx, tg, self.dmg)
+                self.cool[id(tg)] = self.HIT_EVERY
+        fx.guards.append((self.x, self.y, self.RADIUS + 14))
+        if self.life <= 0:
+            self.done = True
+
+    def draw(self, surf, cx, cy, t):
+        X, Y = int(self.x - cx), int(self.y - cy)
+        fade = min(1.0, self.life / 0.5)
+        if self.absorb > 0:                               # the guard still holds: a faint ring
+            _ring(surf, X, Y - BODY, self.RADIUS + 6, (255, 255, 255) if self.flash else self.color,
+                  int(120 * fade * max(0.3, self.absorb / self.max_absorb)), 2, squash=0.75)
+        for a, bx, by in self.blades():
+            sx, sy = int(bx - cx), int(by - cy - BODY)
+            d = (math.cos(a + math.pi / 2), math.sin(a + math.pi / 2) * 0.75)   # blades point along the spin
+            tip = (sx + d[0] * 16, sy + d[1] * 16)
+            hilt = (sx - d[0] * 8, sy - d[1] * 8)
+            nx, ny = -d[1], d[0]
+            _glow(surf, sx, sy, 16, self.color)
+            pygame.draw.polygon(surf, (225, 230, 245), [tip, (hilt[0] + nx * 4, hilt[1] + ny * 4),
+                                                        (hilt[0] - nx * 4, hilt[1] - ny * 4)])
+            pygame.draw.line(surf, (255, 255, 255), hilt, tip, 1)
+            pygame.draw.line(surf, (180, 140, 60), (hilt[0] + nx * 7, hilt[1] + ny * 7),
+                             (hilt[0] - nx * 7, hilt[1] - ny * 7), 3)
+            pygame.draw.line(surf, (110, 70, 40), hilt, (hilt[0] - d[0] * 6, hilt[1] - d[1] * 6), 3)
+
+
 class Projectile(_Effect):
     def __init__(self, x, y, ax, ay, speed, reach, dmg, style, color, radius=10, pierce=False,
-                 explode=None):
+                 explode=None, delay=0.0, basic=False, offset=None):
         self.x, self.y = x, y
+        self.delay = delay              # waits until the sprite's release frame...
+        self.offset = offset            # ...riding along at this spot relative to the hero
+        self.basic = basic              # a basic attack: its hits fill the Archer's energy
         self.vx, self.vy = ax * speed, ay * speed
         self.left = reach
         self.dmg, self.style, self.color, self.radius = dmg, style, color, radius
@@ -297,6 +420,12 @@ class Projectile(_Effect):
             fx.sounds.append("boom")
 
     def update(self, dt, fx, targets, owner, blocked):
+        if self.delay > 0:
+            self.delay -= dt
+            if owner is not None and self.offset is not None:
+                self.x, self.y = owner.x + self.offset[0], owner.y + self.offset[1]
+            if self.delay > 0:
+                return
         steps = 3
         for _ in range(steps):
             self.x += self.vx * dt / steps
@@ -313,6 +442,8 @@ class Projectile(_Effect):
                         self._end(fx)
                         return
                     _hit(fx, tg, self.dmg)
+                    if self.basic:
+                        fx.basic_dealt += self.dmg
                     if not self.pierce:
                         self.done = True
                         return
@@ -323,10 +454,20 @@ class Projectile(_Effect):
             self._end(fx)
 
     def draw(self, surf, cx, cy, t):
+        if self.delay > 0:
+            return
         X, Y = int(self.x - cx), int(self.y - cy - BODY)
         sp = math.hypot(self.vx, self.vy) or 1
         ux, uy = self.vx / sp, self.vy / sp
-        if self.style == "fire":
+        if self.style == "bolt":                         # the Mage's basic arcane bolt
+            for i, (tx, ty) in enumerate(self.trail):
+                pygame.draw.circle(surf, (120 + i * 12, 90 + i * 8, 230), (int(tx - cx), int(ty - cy - BODY)),
+                                   1 + i // 2)
+            _glow(surf, X, Y, 20, (130, 110, 255))
+            pygame.draw.circle(surf, (90, 70, 210), (X, Y), 7)
+            pygame.draw.circle(surf, (190, 200, 255), (X, Y), 4)
+            pygame.draw.circle(surf, (255, 255, 255), (X - 1, Y - 1), 2)
+        elif self.style == "fire":
             for i, (tx, ty) in enumerate(self.trail):
                 r = 2 + i
                 pygame.draw.circle(surf, (255, 120 + i * 12, 40), (int(tx - cx), int(ty - cy - BODY)), r)
@@ -411,37 +552,42 @@ def _glow(surf, x, y, r, color):
 
 
 # =========================================================================== spawners
-def _whirlwind(fx, x, y, ax, ay, p, d):
-    fx.add(Burst(x, y, 96, int(p * 1.5) + 1, "whirl", d.color, follow=True, life=0.45))
+def _blade_ward(fx, x, y, ax, ay, p, d, reach=None):
+    ward = BladeWard(x, y, p, d.color)
+    fx.add(ward)
+    fx.barrier = ward
 
 
-def _shield_bash(fx, x, y, ax, ay, p, d):
+def _shield_bash(fx, x, y, ax, ay, p, d, reach=None):
     fx.lunge = (ax, ay)
     fx.add(Burst(x + ax * 40, y + ay * 40, 70, p * 2, "bash", d.color, delay=0.12, aim=(ax, ay),
                  half=0.9, stun=1.0, life=0.3))
 
 
-def _earthsplitter(fx, x, y, ax, ay, p, d):
+def _earthsplitter(fx, x, y, ax, ay, p, d, reach=None):
     fx.add(Burst(x, y, 210, p * 5 + 4, "earth", d.color, delay=0.18, aim=(ax, ay), half=0.62,
                  stun=0.6, life=0.6))
     fx.shake = 0.35
 
 
-def _fireball(fx, x, y, ax, ay, p, d):
+def _fireball(fx, x, y, ax, ay, p, d, reach=None):
     fx.add(Projectile(x + ax * 20, y + ay * 20, ax, ay, 520, 520, 0, "fire", d.color, radius=12,
                       explode=(62, int(p * 2.5) + 1)))
 
 
-def _frost_nova(fx, x, y, ax, ay, p, d):
-    fx.add(Burst(x, y, 120, p + 1, "frost", d.color, slow=2.5, life=0.5))
+def _arcane_barrier(fx, x, y, ax, ay, p, d, reach=None):
+    shield = Barrier(x, y, 10 + 3 * p, 6.0, d.color)
+    fx.add(shield)
+    fx.barrier = shield
 
 
-def _meteor(fx, x, y, ax, ay, p, d):
-    fx.add(Burst(x + ax * 170, y + ay * 170, 100, p * 6 + 4, "meteor", d.color, delay=0.8, life=0.5))
+def _meteor(fx, x, y, ax, ay, p, d, reach=None):
+    r = _ground(reach, 170)
+    fx.add(Burst(x + ax * r, y + ay * r, 100, p * 6 + 4, "meteor", d.color, delay=0.8, life=0.5))
     fx.shake = 0.3
 
 
-def _volley(fx, x, y, ax, ay, p, d):
+def _volley(fx, x, y, ax, ay, p, d, reach=None):
     base = math.atan2(ay, ax)
     for off in (-0.22, 0.0, 0.22):
         a = base + off
@@ -449,18 +595,37 @@ def _volley(fx, x, y, ax, ay, p, d):
                           int(p * 1.5) + 1, "arrow", d.color, radius=9))
 
 
-def _piercing(fx, x, y, ax, ay, p, d):
+def _piercing(fx, x, y, ax, ay, p, d, reach=None):
     fx.add(Projectile(x + ax * 18, y + ay * 18, ax, ay, 820, 720, p * 3 + 1, "pierce", d.color, radius=12,
                       pierce=True))
 
 
-def _rain(fx, x, y, ax, ay, p, d):
-    fx.add(Zone(x + ax * 150, y + ay * 150, 110, max(1, p), 0.4, 3.0, d.color))
+def _rain(fx, x, y, ax, ay, p, d, reach=None):
+    r = _ground(reach, 150)
+    fx.add(Zone(x + ax * r, y + ay * r, 110, max(1, p), 0.4, 3.0, d.color))
+
+
+def _ground(reach, default):
+    """Distance to a ground-targeted skill's spot: the cursor, kept within GROUND_REACH."""
+    if reach is None:
+        return default
+    return max(GROUND_REACH[0], min(GROUND_REACH[1], reach))
+
+
+def spawn_basic(fx, kind, x, y, aim, dmg, spec, delay=0.0):
+    """The Mage's arcane bolt ("bolt") or the Elf Archer's arrow ("arrow"), toward `aim`.
+    `delay` holds the shot until the sprite's cast / bow-release frame."""
+    ax, ay = aim
+    n = math.hypot(ax, ay)
+    ax, ay = (ax / n, ay / n) if n > 1e-6 else (0.0, 1.0)
+    fx.add(Projectile(x + ax * 20, y + ay * 20, ax, ay, spec.get("speed", 600), spec.get("range", 560), max(1, dmg),
+                      kind, (180, 160, 255) if kind == "bolt" else (170, 240, 160),
+                      radius=9 if kind == "bolt" else 8, delay=delay, basic=True, offset=(ax * 20, ay * 20)))
 
 
 SPAWN = {
-    "whirlwind": _whirlwind, "shield_bash": _shield_bash, "earthsplitter": _earthsplitter,
-    "fireball": _fireball, "frost_nova": _frost_nova, "meteor": _meteor,
+    "blade_ward": _blade_ward, "shield_bash": _shield_bash, "earthsplitter": _earthsplitter,
+    "fireball": _fireball, "arcane_barrier": _arcane_barrier, "meteor": _meteor,
     "arrow_volley": _volley, "piercing_shot": _piercing, "rain_of_arrows": _rain,
 }
 
@@ -474,18 +639,25 @@ class SkillFX:
         self.sounds: list[str] = []           # for the Game to play
         self.hits = 0                         # hits since the Game last read it
         self.lunge = None                     # (dx, dy) when Shield Bash wants the hero to lunge
+        self.basic_dealt = 0                  # basic-shot damage since the Game last read it
+        self.barrier = None                   # a new Barrier / BladeWard for PlayerCombat.barrier
+        self.guards = []                      # (x, y, r) rings that block enemy shots this frame
         self.shake = 0.0
 
     def add(self, effect):
         self.effects.append(effect)
 
     def clear(self):
+        for e in self.effects:
+            e.done = True                     # a barrier held by the hero stops too
         self.effects.clear()
+        self.barrier = None
         self.floaters.clear()
         self.lunge = None
 
     def update(self, dt, targets, owner=None, blocked=None):
         targets = [tg for tg in targets if not getattr(tg, "dead", False)]
+        self.guards = []
         for e in list(self.effects):
             e.update(dt, self, targets, owner, blocked)
         self.effects = [e for e in self.effects if not e.done]

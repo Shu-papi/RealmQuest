@@ -15,12 +15,12 @@ _TEXT = {
     "warrior": {
         "role": "Steel and shield",
         "range": "Melee",
-        "description": "Tough and close-range. Whirls through crowds and bashes foes senseless.",
+        "description": "Tough and close-range. Spinning blades guard him while he bashes foes senseless.",
     },
     "mage": {
-        "role": "Fire and frost",
+        "role": "Fire and arcane",
         "range": "Magic",
-        "description": "Fragile but deadly. Burns, freezes and calls meteors from the sky.",
+        "description": "Fragile but deadly. Burns foes, shields herself and calls meteors from the sky.",
     },
     "archer": {
         "role": "Swift and sharp",

@@ -43,7 +43,8 @@ SKILL_KEYS = {"skill": "K", "skill_2": "U", "special": "F"}
 
 class ClassSelect:
     def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H, hero_name="", portraits=None,
-                 skill_keys=None):
+                 skill_keys=None, sprites=None):
+        self.sprites = sprites if sprites is not None else {}   # {class: HeroSprite}: animated card art
         self.width = width
         self.height = height
         self.hero_name = hero_name               # shown above the cards ("Aria, choose your path")
@@ -148,7 +149,13 @@ class ClassSelect:
         pygame.draw.rect(surface, theme.STONE_DARK, box)
         art = self.portraits.get(cls)
         inner = (box[0] + 8, box[1] + 6, box[2] - 16, box[3] - 10)
-        if art is not None:              # the hero exactly as they look in the world
+        sprite = self.sprites.get(cls)
+        if sprite is not None:           # the hero, alive: idle, and a flourish when picked
+            clip = surface.get_clip()
+            surface.set_clip(pygame.Rect(box))
+            sprite.draw(surface, inner[0] + inner[2] // 2, inner[1] + inner[3] - 2)
+            surface.set_clip(clip)
+        elif art is not None:            # the hero exactly as they look in the world
             k = min(inner[2] / art.get_width(), inner[3] / art.get_height())
             if k >= 1:
                 k = int(k)

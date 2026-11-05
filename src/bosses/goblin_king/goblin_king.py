@@ -161,6 +161,10 @@ class GoblinKing:
         self.aggro = False
         self.alert_timer = 0.0
         self.attack_angle = 0.0      # direction of the current attack (radians)
+        self.phase = 1               # 2 = below PHASE2_HP_FRACTION: has called his minions
+        self.summon_timer = 0.0      # > 0 while he roars (can't be hurt, doesn't act)
+        self.summon_ready = False    # True once the roar ends; the game spawns minions and clears it
+        self.sounds = []             # cfg.SOUNDS names reached since the game last took them
         self.font = pygame.font.SysFont(None, 24)
         self.alert_font = pygame.font.SysFont(None, 56)
 
@@ -220,13 +224,28 @@ class GoblinKing:
             self.special_cooldown = (cfg.SPECIAL_COOLDOWN_ENRAGED if enraged
                                      else cfg.SPECIAL_COOLDOWN)
 
+    @property
+    def summoning(self):
+        return self.summon_timer > 0
+
     def take_damage(self, amount):
+        if self.dead or self.summoning:           # the roar shrugs every hit off
+            return
         self.hp = max(0, self.hp - amount)
         self.hurt_timer = cfg.HURT_FLASH_TIME     # red flash
         self.wake()                               # being hit also triggers him
         if self.hp == 0:
             self.dead = True
             self.set_state("idle")
+        elif self.phase == 1 and self.hp <= self.max_hp * cfg.PHASE2_HP_FRACTION:
+            self.start_phase2()
+
+    def start_phase2(self):
+        """Half HP: drop whatever he was doing and roar for his minions."""
+        self.phase = 2
+        self.set_state("idle")
+        self.hits_done = set()
+        self.summon_timer = cfg.SUMMON_TIME
 
     def in_arc(self, dx, dy, arc):
         """True if the offset (dx, dy) is inside the attack's cone."""
@@ -241,6 +260,13 @@ class GoblinKing:
         self.hurt_timer = max(0.0, self.hurt_timer - dt)
         self.alert_timer = max(0.0, self.alert_timer - dt)
         if self.dead:
+            return
+        if self.summoning:                       # roaring: stands still, then the minions come
+            self.summon_timer = max(0.0, self.summon_timer - dt)
+            if self.summon_timer == 0:
+                self.summon_ready = True
+                self.speed *= cfg.PHASE2_SPEED_K
+            self._advance(get_anim("idle"), dt)
             return
         self.heavy_cooldown = max(0.0, self.heavy_cooldown - dt)
         self.special_cooldown = max(0.0, self.special_cooldown - dt)
@@ -287,15 +313,8 @@ class GoblinKing:
             self.y += rdy / real * dash[2] * self.dk * dt
 
         # advance animation
-        self.frame_time += dt
-        if self.frame_time >= 1 / anim["fps"]:
-            self.frame_time = 0.0
-            self.frame_index += 1
-            if self.frame_index >= len(anim["frames"]):
-                if anim["once"]:
-                    self.set_state("idle")
-                    return
-                self.frame_index = 0
+        if not self._advance(anim, dt):
+            return
 
         # deal damage on hit frames (once per hit)
         hit = self.hits.get(self.state, {}).get(self.frame_index)
@@ -305,6 +324,23 @@ class GoblinKing:
             tdx, tdy = self.offset_to(target)
             if math.hypot(tdx, tdy) <= reach and self.in_arc(tdx, tdy, arc):
                 self.hurt_target(target, damage)
+
+    def _advance(self, anim, dt):
+        """Add `dt` to the animation clock and step the frame. False when a play-once
+        animation just ended (he is back to idle)."""
+        self.frame_time += dt
+        if self.frame_time >= 1 / anim["fps"]:
+            self.frame_time = 0.0
+            self.frame_index += 1
+            if self.frame_index >= len(anim["frames"]):
+                if anim["once"]:
+                    self.set_state("idle")
+                    return False
+                self.frame_index = 0
+            sound = cfg.SOUNDS.get(self.state, {}).get(self.frame_index)
+            if sound:
+                self.sounds.append(sound)
+        return True
 
     @staticmethod
     def hurt_target(target, damage):
@@ -370,8 +406,27 @@ class GoblinKing:
         finally:
             self.x, self.y = self.x + cam[0], self.y + cam[1]
 
+    def draw_summon(self, screen):
+        """Green rings growing out from his feet while he roars for his minions."""
+        if not self.summoning:
+            return
+        k = 1.0 - self.summon_timer / cfg.SUMMON_TIME          # 0 -> 1 over the roar
+        gx, gy = self.ground
+        reach = cfg.SUMMON_RING * self.dk
+        size = int(reach * 2) + 12
+        layer = pygame.Surface((size, size), pygame.SRCALPHA)
+        c = size // 2
+        for i in range(3):
+            r = ((k + i / 3) % 1.0) * reach
+            alpha = int(200 * (1 - r / reach))
+            if r > 2:
+                pygame.draw.ellipse(layer, cfg.SUMMON_COLOR + (alpha,),
+                                    (c - r, c - r * self.squash, r * 2, r * 2 * self.squash), 3)
+        screen.blit(layer, (gx - c, gy - c))
+
     def _draw(self, screen):
-        self.draw_telegraph(screen)          # on the floor, under the sprite
+        self.draw_summon(screen)             # on the floor, under the sprite
+        self.draw_telegraph(screen)
 
         anim = get_anim(self.state)
         pos = min(self.frame_index, len(anim["frames"]) - 1)
@@ -462,6 +517,7 @@ def main():
             player.y += step
 
         boss.update(dt, player)
+        boss.sounds.clear()                       # the demo has no sound effects
 
         screen.fill((44, 42, 53))
         boss.draw(screen)

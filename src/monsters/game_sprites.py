@@ -14,11 +14,14 @@ by every enemy that wears it.
 Skins:
     overworld:      slime_red, slime_blue, slime_green, wild_boar
                     (assets/monsters/mobs/ - idle / walk / attack sheets)
-    goblin dungeon: goblin_shaman (assets/monsters/mobs/),
+    goblin dungeon: goblin_minion (assets/monsters/goblin_minion/ - one-row sheet + json),
+                    goblin_shaman (assets/monsters/mobs/),
                     goblin_general, giant_boar (assets/monsters/goblin_army/)
+                    (slimes and the wild boar live there too)
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 
@@ -35,8 +38,13 @@ MOB_PIXEL = 2                 # on-screen size of one art pixel for the mobs she
 ARMY_SCALE = {"goblin_general": 2.0, "giant_boar": 1.5}
 ARMY_NAMES = {"goblin_general": "goblin_general", "giant_boar": "giant_boar"}
 MOB_SKINS = ("slime_red", "slime_blue", "slime_green", "wild_boar", "goblin_shaman")
-SKINS = MOB_SKINS + tuple(ARMY_SCALE)
+MINION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                          "assets", "monsters", "goblin_minion")
+MINION_PIXEL = 2.5            # on-screen size of one art pixel for the goblin minion
+SHEET_SKINS = ("goblin_minion",)
+SKINS = MOB_SKINS + tuple(ARMY_SCALE) + SHEET_SKINS
 ATTACK_CLIP = {"goblin_shaman": "fireball"}     # which attack sheet a skin plays
+EXTRA_CLIPS = {"goblin_shaman": ("barrier",)}   # more one-shot casts (enemy.attack_clip picks one)
 
 _library = None
 _army = {}
@@ -81,7 +89,12 @@ def _mob_skin(key):
         c = clips[name]
         out[state] = _Anim(c.frames[1], c.anchor, c.baseline, [ms / 1000.0 for ms in c.durations],
                            state != "attack", c.root_motion)
+    for name in EXTRA_CLIPS.get(key, ()):
+        c = clips[name]
+        out[name] = _Anim(c.frames[1], c.anchor, c.baseline, [ms / 1000.0 for ms in c.durations],
+                          False, c.root_motion)
     return out
+
 
 
 def _army_skin(key):
@@ -104,12 +117,57 @@ def _army_skin(key):
     return out
 
 
+def minion_config():
+    """assets/monsters/goblin_minion/goblin_config.json (frames, anchor, animation timings)."""
+    with open(os.path.join(MINION_DIR, "goblin_config.json"), "r") as f:
+        return json.load(f)
+
+
+def _minion_skin(key):
+    """The goblin minion: one row of frames drawn FACING LEFT, animations listed in the json."""
+    cfg = minion_config()
+    sp = cfg["sprite"]
+    fw, fh = sp["frame_width"], sp["frame_height"]
+    sheet = pygame.image.load(os.path.join(MINION_DIR, sp["sheet"])).convert_alpha()
+    k = MINION_PIXEL
+    size = (int(round(fw * k)), int(round(fh * k)))
+    cells = [pygame.transform.scale(sheet.subsurface(pygame.Rect(c * fw, 0, fw, fh)), size)
+             for c in range(sheet.get_width() // fw)]
+    ax, ay = sp["anchor"]
+    anchor = {1: (fw - 1 - ax) * k, -1: ax * k}           # right-facing frames are the flipped ones
+    out = {}
+    for state in ("idle", "walk", "attack"):
+        a = cfg["animations"][state]
+        left = [cells[i] for i in a["frames"]]
+        anim = _Anim([pygame.transform.flip(f, True, False) for f in left], anchor, ay * k,
+                     [ms / 1000.0 for ms in a["durations"]], a["loop"])
+        out[state] = anim
+    return out
+
+
 def skin(key):
     """The animations of a skin, loaded on first use (needs a display)."""
     s = _army.get(key)
     if s is None:
-        s = _army[key] = _mob_skin(key) if key in MOB_SKINS else _army_skin(key)
+        if key in MOB_SKINS:
+            s = _mob_skin(key)
+        elif key in SHEET_SKINS:
+            s = _minion_skin(key)
+        else:
+            s = _army_skin(key)
+        _army[key] = s
     return s
+
+
+_body_h = {}
+
+
+def body_height(enemy):
+    """On-screen height of a skinned enemy's body (idle pose), e.g. to size a barrier bubble."""
+    h = _body_h.get(enemy.skin)
+    if h is None:
+        h = _body_h[enemy.skin] = skin(enemy.skin)["idle"].frames[1][0].get_bounding_rect().height
+    return h * getattr(enemy, "skin_scale", 1.0)
 
 
 def portrait(key, height=120):
@@ -159,14 +217,17 @@ def draw_enemy(enemy, surf, cx, cy, shadow=True):
     cd = getattr(enemy, "attack_cd", 0.0)
     if cd > st["cd"] + 0.05:                      # an attack just started
         st["atk"] = 0.0
+        clip = getattr(enemy, "attack_clip", "attack")
+        st["clip"] = clip if clip in anims else "attack"
     st["cd"] = cd
+    atk_anim = anims[st.get("clip", "attack")]
     if st["atk"] is not None:
         st["atk"] += dt
-        if st["atk"] >= anims["attack"].length:
+        if st["atk"] >= atk_anim.length:
             st["atk"] = None
 
     if st["atk"] is not None:
-        anim, at = anims["attack"], st["atk"]
+        anim, at = atk_anim, st["atk"]
     elif st["moving"] > 0 and not getattr(enemy, "stun_t", 0):
         anim, at = anims["walk"], st["t"]
     else:
