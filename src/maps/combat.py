@@ -1,9 +1,9 @@
 """
-combat.py - MAP-ONLY VERSION
+combat.py - the hero's combat (class, bars, dash, basic attack) and the dungeon monsters.
 
-All placeholder monsters, bosses, projectiles and their sprites have been removed.
-What remains is the contract the map (game file) depends on, so teammates can plug in
-their own monsters/bosses by filling in the `Encounters` class.
+The Goblin Dungeon family uses real sprites (Goblin Shaman, Goblin War Boar, General Grub,
+and Valdur the Goblin King from src/bosses/goblin_king); the other dungeons still use
+plain shapes until their art arrives. Teammates plug in monsters/bosses through `Encounters`.
 
 The map file imports from here:
     Encounters, PlayerCombat, DASH_SPEED, sprite
@@ -33,9 +33,19 @@ USEFUL MAP DATA FOR TEAMMATES:
 from __future__ import annotations
 
 import math
+import os
 import random
+import sys
 
 import pygame
+
+# src/ on the import path, so the map can use the skills, monsters and bosses packages
+_SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from skills import classes as hero_classes          # noqa: E402
+from skills.skills import Pools, SkillCaster        # noqa: E402
 
 TILE = 24
 MAP_W, MAP_H = 288, 162
@@ -98,9 +108,28 @@ def bar(surf, x, y, w, h, frac, col, back=(54, 18, 24)):
 
 
 # ---- placeholder sprite ---------------------------------------------------
+_BOSS_PORTRAITS = {}
+
+
 def sprite(kind, flip=False):
-    """Placeholder so the map file's import (and dialog portraits) still work.
-    Teammates: return your own monster/boss sprite for `kind` here."""
+    """Dialog portrait for a boss / monster `kind`.
+    The Goblin King uses his real sprite; bosses without art yet get a plain block."""
+    if kind == "goblin_king":
+        img = _BOSS_PORTRAITS.get(kind)
+        if img is None:
+            try:
+                from bosses.goblin_king.goblin_king import load_image
+                from bosses.goblin_king import boss_config as gk_cfg
+                sheet = load_image(gk_cfg.SHEET)
+                col = gk_cfg.ANIMS["idle"]["frames"][0]
+                frame = sheet.subsurface(pygame.Rect(col * gk_cfg.FRAME_W, 0, gk_cfg.FRAME_W, gk_cfg.FRAME_H))
+                body = frame.subsurface(frame.get_bounding_rect()).copy()
+                img = pygame.transform.scale(body, (body.get_width() * 3, body.get_height() * 3))
+            except Exception:
+                img = None
+            _BOSS_PORTRAITS[kind] = img
+        if img is not None:
+            return pygame.transform.flip(img, True, False) if flip else img
     s = pygame.Surface((32, 32), pygame.SRCALPHA)
     s.fill((200, 0, 200, 255))
     return s
@@ -108,15 +137,29 @@ def sprite(kind, flip=False):
 
 # ---- player combat (kept: the map's Player uses dash, hp, sword) ----------
 class PlayerCombat:
-    def __init__(self):
+    def __init__(self, character_class="warrior"):
         self.max_hp = PLAYER_MAX_HP
         self.potions = POTION_START
         self.dmg_bonus = 0          # permanent sword upgrade (boss rewards)
+        self.apply_class(character_class)
         self.reset()
+
+    def apply_class(self, character_class):
+        """Warrior / Mage / Archer: basic-attack feel, resource bars and skills."""
+        st = hero_classes.stats(character_class)
+        self.character_class = character_class if character_class in hero_classes.CLASS_STATS else "warrior"
+        self.class_name = st["name"]
+        self.class_dmg = st["dmg_bonus"]
+        self.swing_cd = st["swing_cd"]
+        self.swing_color = st["swing_color"]
+        self.speed_k = st["speed"]
+        self.energy_on_hit = st["energy_on_hit"]
+        self.pools = Pools(st["bars"])
+        self.caster = SkillCaster(self.character_class)
 
     @property
     def sword_dmg(self):
-        return SWORD_DMG + self.dmg_bonus
+        return SWORD_DMG + self.dmg_bonus + self.class_dmg
 
     def reset(self):
         self.hp = self.max_hp
@@ -127,6 +170,7 @@ class PlayerCombat:
         self.dead = False
         self.dash_cd = 0.0
         self.dash_inv = 0.0
+        self.pools.refill()
 
     def heal(self, n):
         self.hp = min(self.max_hp, self.hp + n)
@@ -150,9 +194,14 @@ class PlayerCombat:
         self.swing = max(0.0, self.swing - dt)
         self.dash_cd = max(0.0, self.dash_cd - dt)
         self.dash_inv = max(0.0, self.dash_inv - dt)
+        if not self.dead:
+            self.pools.update(dt)
+        self.caster.update(dt)
 
     def try_dash(self, player, dx, dy):
         if self.dead or self.dash_cd > 0 or player.dash_t > 0:
+            return False
+        if not self.pools.spend("stamina", hero_classes.DASH_STAMINA):
             return False
         l = math.hypot(dx, dy)
         if l < 1e-6:
@@ -197,7 +246,7 @@ class PlayerCombat:
         if l < 1e-6:
             dx, dy, l = 0.0, 1.0, 1.0
         dx, dy = dx / l, dy / l
-        self.cd = SWORD_COOLDOWN
+        self.cd = self.swing_cd
         self.swing = SWING_TIME
         self.swing_dir = (dx, dy)
         if abs(dx) > abs(dy):
@@ -221,7 +270,7 @@ class PlayerCombat:
             outer.append((70 + math.cos(a) * r_out, 70 + math.sin(a) * r_out))
             inner.append((70 + math.cos(a) * r_in, 70 + math.sin(a) * r_in))
         layer = blank(140, 140)
-        pygame.draw.polygon(layer, (230, 240, 255, int(190 * k)), outer + inner[::-1])
+        pygame.draw.polygon(layer, (*self.swing_color, int(190 * k)), outer + inner[::-1])
         pygame.draw.lines(layer, (255, 255, 255, int(255 * k)), False, outer, 2)
         px = int(player.x - cx) - 70
         py = int(player.y - cy) - 14 - 70
@@ -241,20 +290,40 @@ class Enemy:
         self.radius = radius
         self.attack_cd = 0.0
         self.hit_flash = 0.0
+        self.stun_t = 0.0           # skills: can't move or attack
+        self.slow_t = 0.0           # skills: moves at SLOW_K speed
+        self.face_x = 0             # +1 / -1: which way the sprite looks (0 = from movement)
+        self.skin = None            # monsters.game_sprites skin key, None = plain circle
+        self.skin_scale = 1.0
 
     @property
     def dead(self):
         return self.hp <= 0
+
+    @property
+    def speed_k(self):
+        return SLOW_K if self.slow_t > 0 else 1.0
+
+    def cc_tick(self, dt):
+        """Count down stun / slow. True while stunned (skip moving and attacking)."""
+        self.slow_t = max(0.0, self.slow_t - dt)
+        if self.stun_t > 0:
+            self.stun_t = max(0.0, self.stun_t - dt)
+            return True
+        return False
 
     def update(self, dt, player, dungeon, pc):
         if self.dead:
             return
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.hit_flash = max(0.0, self.hit_flash - dt)
+        if self.cc_tick(dt):
+            return
         dx, dy = player.x - self.x, player.y - self.y
+        self.face_x = 1 if dx > 0 else -1
         distance = math.hypot(dx, dy) or 1.0
         if distance > self.radius + 22:
-            step = self.speed * dt / distance
+            step = self.speed * self.speed_k * dt / distance
             nx, ny = self.x + dx * step, self.y + dy * step
             if dungeon.can_stand(nx, ny):
                 self.x, self.y = nx, ny
@@ -271,6 +340,19 @@ class Enemy:
     def draw(self, surf, cx, cy):
         if self.dead:
             return
+        if self.skin:
+            from monsters import game_sprites
+            rect = game_sprites.draw_enemy(self, surf, cx, cy)
+            if self.hp < self.max_hp:
+                w = max(28, self.radius * 2)
+                bar(surf, int(self.x - cx) - w // 2, rect.top + 4, w, 4,
+                    self.hp / self.max_hp, (210, 54, 60), (45, 18, 24))
+            if self.stun_t > 0:                           # little stars over its head
+                for i in range(3):
+                    a = pygame.time.get_ticks() / 160 + i * 2.1
+                    pygame.draw.circle(surf, (255, 230, 120), (int(self.x - cx + math.cos(a) * 12),
+                                                               rect.top + 2 + int(math.sin(a) * 4)), 2)
+            return
         x, y = int(self.x - cx), int(self.y - cy - 14)
         color = (255, 245, 220) if self.hit_flash else self.color
         pygame.draw.ellipse(surf, (18, 12, 18), (x - self.radius, y + self.radius - 3,
@@ -282,12 +364,87 @@ class Enemy:
             self.hp / self.max_hp, (210, 54, 60), (45, 18, 24))
 
 
+SLOW_K = 0.45                       # speed while slowed by Frost Nova
+
+
+def projectile_open(dungeon, x, y):
+    """Can a fireball / arrow be here? Walls and the locked room's edge stop it; puddles,
+    statues and crates don't (unlike walking, see Dungeon.can_stand)."""
+    lr = getattr(dungeon, "lock_rect", None)
+    if lr is not None and not lr.collidepoint(x, y):
+        return False
+    tx, ty = int(x // TILE), int(y // TILE)
+    if not (0 <= tx < MAP_W and 0 <= ty < MAP_H):
+        return False
+    return dungeon.tiles[ty * MAP_W + tx] in OPEN
+
+
+class EnemyBolt:
+    """A Goblin Shaman's fireball: flies straight, hurts the hero, stops at walls."""
+
+    def __init__(self, x, y, dx, dy, damage, speed=190.0):
+        self.x, self.y = x, y
+        d = math.hypot(dx, dy) or 1.0
+        self.vx, self.vy = dx / d * speed, dy / d * speed
+        self.damage = damage
+        self.life = 2.4
+        self.dead = False
+
+    def update(self, dt, player, dungeon, pc):
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.life -= dt
+        if self.life <= 0 or not projectile_open(dungeon, self.x, self.y):
+            self.dead = True
+        elif math.hypot(player.x - self.x, player.y - self.y) < 16:
+            pc.hurt(self.damage, player, dungeon, self.x, self.y)
+            self.dead = True
+
+    def draw(self, surf, cx, cy, t):
+        x, y = int(self.x - cx), int(self.y - cy - 14)
+        pygame.draw.circle(surf, (120, 40, 20), (x, y), 8)
+        pygame.draw.circle(surf, (255, 140, 50), (x, y), 6)
+        pygame.draw.circle(surf, (255, 240, 180), (x - 1, y - 1), 3)
+
+
+class RangedEnemy(Enemy):
+    """Keeps its distance and throws fireballs (the Goblin Shaman)."""
+
+    def __init__(self, *args, bolts=None, **kw):
+        super().__init__(*args, **kw)
+        self.bolts = bolts if bolts is not None else []
+        self.attack_cd = random.uniform(0.6, 1.6)
+
+    def update(self, dt, player, dungeon, pc):
+        if self.dead:
+            return
+        self.attack_cd = max(0.0, self.attack_cd - dt)
+        self.hit_flash = max(0.0, self.hit_flash - dt)
+        if self.cc_tick(dt):
+            return
+        dx, dy = player.x - self.x, player.y - self.y
+        self.face_x = 1 if dx > 0 else -1
+        d = math.hypot(dx, dy) or 1.0
+        step = self.speed * self.speed_k * dt / d
+        if d > 230:                         # close in
+            nx, ny = self.x + dx * step, self.y + dy * step
+        elif d < 120:                       # back off
+            nx, ny = self.x - dx * step, self.y - dy * step
+        else:
+            nx, ny = self.x, self.y
+        if dungeon.can_stand(nx, ny):
+            self.x, self.y = nx, ny
+        if d < 330 and self.attack_cd <= 0 and not pc.dead:
+            self.attack_cd = 2.2
+            self.bolts.append(EnemyBolt(self.x + self.face_x * 14, self.y, dx, dy, self.damage))
+
+
 # rooms with no monsters (they start "safe" and never lock)
 SAFE_ROLES = {"start", "shrine", "trap", "stairs", "antechamber"}
 
 # placeholder mini-bosses: name, hp, speed, damage, color, radius
 MINIBOSSES = {
-    1: ("Grub the Warchief", 22, 76, 4, (92, 124, 52), 19),
+    1: ("General Grub", 22, 76, 4, (92, 124, 52), 22),
     2: ("Bloodhowl Captain", 30, 70, 5, (190, 64, 44), 21),
     3: ("Bone Warden", 36, 60, 6, (176, 168, 204), 21),
 }
@@ -315,6 +472,7 @@ class Encounters:
         self.miniboss = None          # the mini-boss Enemy while it is alive (for the HUD bar)
         self.family = getattr(dungeon, "family", dungeon_id)   # which monsters (mini dungeons borrow one)
         self.killed = []              # (x, y, max_hp, kind) of enemies that died; the Game turns them into XP
+        self.bolts = []               # Goblin Shaman fireballs in flight
         if self.roles:
             for k, role in enumerate(self.roles):
                 if role in SAFE_ROLES:
@@ -348,12 +506,16 @@ class Encounters:
 
         for enemy in self.enemies:
             enemy.update(dt, player, self.d, pc)
+        for bolt in self.bolts:
+            bolt.update(dt, player, self.d, pc)
+        self.bolts[:] = [b for b in self.bolts if not b.dead]     # in place: shamans hold this list
         for enemy in self.enemies:
             if enemy.dead:
                 self.killed.append((enemy.x, enemy.y, enemy.max_hp, getattr(enemy, "kind", "normal")))
         self.enemies = [enemy for enemy in self.enemies if not enemy.dead]
         if self.enemies:
             return
+        self.bolts.clear()
 
         room = self.active
         self.state[room] = "cleared"
@@ -374,14 +536,17 @@ class Encounters:
                                        rect.w * TILE, rect.h * TILE)
         is_boss = room == self.boss_room and self.boss_floor
         if is_boss:
-            name, hp, speed, damage, color, radius = {
-                "goblin_king": ("Valdur, Goblin King", 34, 72, 5, (126, 62, 52), 20),
-                "minotaur": ("Minotaur", 48, 58, 7, (132, 82, 48), 24),
-                "lich": ("Lich King", 60, 48, 8, (132, 92, 190), 24),
-            }[self.boss_kind]
-            self.enemies = [Enemy(rect.centerx * TILE, rect.centery * TILE,
-                                  name, hp, speed, damage, color, radius)]
-            self.enemies[0].kind = "boss"
+            if self.boss_kind == "goblin_king":        # the real sprite boss
+                from bosses.goblin_king.in_game import GoblinKingEnemy
+                self.enemies = [GoblinKingEnemy(rect.centerx * TILE, rect.centery * TILE)]
+            else:
+                name, hp, speed, damage, color, radius = {
+                    "minotaur": ("Minotaur", 48, 58, 7, (132, 82, 48), 24),
+                    "lich": ("Lich King", 60, 48, 8, (132, 92, 190), 24),
+                }[self.boss_kind]
+                self.enemies = [Enemy(rect.centerx * TILE, rect.centery * TILE,
+                                      name, hp, speed, damage, color, radius)]
+                self.enemies[0].kind = "boss"
             self.dialog_request = self.boss_kind
         else:
             names = {
@@ -399,15 +564,30 @@ class Encounters:
             else:
                 count = {"guard": 4, "seal": 3, "miniboss": 2, "vault": self.rng.randint(2, 3)}.get(
                     role, self.rng.randint(2, 4))
-            self.enemies = [Enemy((cx + ox) * TILE, (cy + oy) * TILE, name, 8, 82, 2, color)
-                            for ox, oy in points[:count]]
+            goblins = dungeon_id == 1         # the Goblin Dungeon family: real sprites
+            if goblins:
+                self.enemies = [RangedEnemy((cx + ox) * TILE, (cy + oy) * TILE, "Goblin Shaman", 8, 70, 2,
+                                            color, 14, bolts=self.bolts)
+                                for ox, oy in points[:count]]
+                for e in self.enemies:
+                    e.skin = "goblin_shaman"
+            else:
+                self.enemies = [Enemy((cx + ox) * TILE, (cy + oy) * TILE, name, 8, 82, 2, color)
+                                for ox, oy in points[:count]]
             if role == "guard":          # an elite holds the floor key
-                self.enemies.append(Enemy(cx * TILE, (cy - 3) * TILE, name + " Elite", 14, 78, 3,
-                                          tuple(min(255, c + 50) for c in color), 17))
-                self.enemies[-1].kind = "elite"
+                if goblins:
+                    elite = Enemy(cx * TILE, (cy - 3) * TILE, "Goblin War Boar", 14, 92, 3, color, 22)
+                    elite.skin = "giant_boar"
+                else:
+                    elite = Enemy(cx * TILE, (cy - 3) * TILE, name + " Elite", 14, 78, 3,
+                                  tuple(min(255, c + 50) for c in color), 17)
+                elite.kind = "elite"
+                self.enemies.append(elite)
             elif role in ("miniboss", "lair"):
                 mname, hp, speed, dmg, mcol, rad = MINIBOSSES.get(dungeon_id, MINIBOSSES[3])
                 self.miniboss = Enemy(cx * TILE, (cy - 2) * TILE, mname, hp, speed, dmg, mcol, rad)
+                if goblins:
+                    self.miniboss.skin = "goblin_general"
                 self.miniboss.kind = "elite"
                 self.enemies.append(self.miniboss)
                 self.snd("roar")
@@ -435,6 +615,7 @@ class Encounters:
         if room is None:
             return None
         self.enemies = []
+        self.bolts.clear()
         self.active = None
         self.d.lock_rect = None
         self.state[room] = "pending"
@@ -444,14 +625,23 @@ class Encounters:
 
     def draw(self, surf, cx, cy, t, player, pc):
         # monsters/projectiles/etc. go here; the sword slash is kept so attacks show
-        for enemy in self.enemies:
+        for enemy in sorted(self.enemies, key=lambda e: e.y):
             enemy.draw(surf, cx, cy)
+        for bolt in self.bolts:
+            bolt.draw(surf, cx, cy, t)
         pc.draw_slash(surf, player, cx, cy)
 
     def draw_hud(self, surf, cx, cy, pc, t):
-        bar(surf, 16, 82, 290, 16, pc.hp / pc.max_hp, (214, 56, 64))
-        put(surf, self.font, f"HP {pc.hp}/{pc.max_hp}", (255, 235, 235), 24, 83)
-        put(surf, self.font, f"Potions: {pc.potions}   (H: drink)", (255, 225, 230), 16, 106)
+        """Boss / mini-boss bars (the hero's own bars are drawn by the Game's hero HUD)."""
+        boss = next((e for e in self.enemies if getattr(e, "kind", "") == "boss" and not e.dead), None)
+        if boss is not None:
+            w = 520
+            x = surf.get_width() // 2 - w // 2
+            put(surf, self.font, boss.name, (255, 200, 150), surf.get_width() // 2, surf.get_height() - 64,
+                center=True)
+            bar(surf, x, surf.get_height() - 42, w, 16, boss.hp / boss.max_hp, (200, 40, 50))
+            put(surf, self.font, f"{int(boss.hp)} / {boss.max_hp}", (255, 235, 235), surf.get_width() // 2,
+                surf.get_height() - 42, center=True)
         mb = self.miniboss
         if mb is not None and not mb.dead:          # mini-boss name + health bar, top centre
             w = 360

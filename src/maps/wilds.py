@@ -8,9 +8,12 @@ wilds.py - the dangerous country outside Oakwood: roaming packs, monster lairs a
         draw_world / lights / draw_hud / draw_minimap
 
 Packs roam around a home point and chase Himmel when he comes close. They grow
-stronger the further they are from the village: wolves and goblin scouts near the
-caves, bandits and boars across the river and at the forest's edge, shadow stalkers
+stronger the further they are from the village: slimes and goblin scouts near the
+caves, bandits and wild boars across the river and at the forest's edge, shadow stalkers
 and wraiths deep in the Deep Forest. A wiped-out pack returns after a while.
+
+Slimes (red / blue / green) and wild boars wear the sprites from assets/monsters/mobs/
+(see src/monsters/game_sprites.py); the others are still drawn as plain shapes.
 
 Lairs keep sending out monsters while Himmel is near. Destroy one for XP and gold;
 it is rebuilt a few minutes later.
@@ -36,16 +39,16 @@ except ImportError:
 
 # name, hp, speed, damage, colour, radius, tier
 MOBS = {
-    "wolf":    ("Grey Wolf", 6, 96, 2, (138, 138, 150), 12, 1),
+    "slime":   ("Slime", 6, 80, 2, (110, 190, 110), 13, 1),
     "goblin":  ("Goblin Scout", 8, 78, 2, (112, 150, 70), 13, 1),
     "bandit":  ("Bandit", 12, 82, 3, (156, 104, 82), 14, 2),
-    "boar":    ("Thornback Boar", 14, 88, 3, (124, 86, 56), 15, 2),
+    "boar":    ("Wild Boar", 14, 88, 3, (124, 86, 56), 18, 2),
     "stalker": ("Shadow Stalker", 16, 92, 4, (96, 64, 140), 14, 3),
     "wraith":  ("Forest Wraith", 18, 70, 5, (150, 196, 206), 15, 3),
 }
 # kind, home, count, roam radius
 PACKS = [
-    ("wolf", (720, 2240), 3, 150), ("wolf", (1640, 2240), 3, 160), ("goblin", (250, 1820), 3, 120),
+    ("slime", (720, 2240), 3, 150), ("slime", (1640, 2240), 3, 160), ("goblin", (250, 1820), 3, 120),
     ("goblin", (1400, 2230), 3, 130),
     ("bandit", (1650, 3010), 3, 150), ("bandit", (2950, 2640), 4, 160), ("bandit", (3450, 2960), 4, 160),
     ("boar", (3820, 2760), 3, 170), ("boar", (3150, 1320), 3, 150), ("boar", (3300, 1950), 3, 150),
@@ -55,7 +58,7 @@ PACKS = [
 ]
 # kind, position, name
 LAIRS = [
-    ("wolf", (700, 2640), "Wolf Den"), ("goblin", (1650, 2100), "Goblin Camp"),
+    ("slime", (700, 2640), "Slime Den"), ("goblin", (1650, 2100), "Goblin Camp"),
     ("bandit", (3150, 2860), "Bandit Camp"), ("boar", (3380, 1250), "Boar Warren"),
     ("stalker", (3960, 1150), "Stalker Nest"), ("wraith", (4170, 1690), "Wraith Barrow"),
 ]
@@ -65,7 +68,9 @@ PACK_RESPAWN = 90.0
 EVENT_SPOTS = {1: [(900, 2060), (1800, 2250), (420, 1700)],
                2: [(2500, 2620), (3300, 2700), (3150, 1500), (1500, 2900)],
                3: [(3800, 900), (4000, 1500), (3600, 400)]}
-CHAMPIONS = {1: ("Gorefang the Alpha", "wolf"), 2: ("Black Tusk", "boar"), 3: ("The Hollow Widow", "stalker")}
+CHAMPIONS = {1: ("Gloomgut the Great Slime", "slime"), 2: ("Black Tusk", "boar"), 3: ("The Hollow Widow", "stalker")}
+# monsters that wear a sprite: kind -> skin keys (one is picked per monster)
+SKINS = {"slime": ("slime_red", "slime_blue", "slime_green"), "boar": ("wild_boar",)}
 CARAVAN_SPOT = (2075, 2180)
 
 
@@ -88,12 +93,17 @@ class Mob(Enemy):
         self.wait = rng.uniform(0.5, 3.0)
         self.aggro = False
         self.leash = 520
+        if kind in SKINS:
+            self.skin = rng.choice(SKINS[kind])
 
     def step(self, dt, player, ground, pc, wilds):
         if self.dead:
             return
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.hit_flash = max(0.0, self.hit_flash - dt)
+        if self.cc_tick(dt):
+            return
+        self.face_x = 0
         dp = math.hypot(player.x - self.x, player.y - self.y)
         dh = math.hypot(self.x - self.home[0], self.y - self.home[1])
         if self.aggro and (dh > self.leash or pc.dead):
@@ -102,6 +112,7 @@ class Mob(Enemy):
         elif not self.aggro and dp < (200 if self.tier == 1 else 240) and dh < self.leash - 60 and not pc.dead:
             self.aggro = True
         if self.aggro:
+            self.face_x = 1 if player.x > self.x else -1
             if dp > self.radius + 22:
                 self._move(player.x - self.x, player.y - self.y, dt, ground, 1.0)
             elif self.attack_cd <= 0 and pc.hurt(self.damage, player, ground, self.x, self.y):
@@ -124,7 +135,8 @@ class Mob(Enemy):
 
     def _move(self, dx, dy, dt, ground, k):
         d = math.hypot(dx, dy) or 1.0
-        sx, sy = dx / d * self.speed * k * dt, dy / d * self.speed * k * dt
+        v = self.speed * self.speed_k * k * dt
+        sx, sy = dx / d * v, dy / d * v
         moved = False
         if ground.can_stand(self.x + sx, self.y):
             self.x += sx
@@ -136,7 +148,7 @@ class Mob(Enemy):
 
     def draw(self, surf, cx, cy):
         super().draw(surf, cx, cy)
-        if not self.dead:
+        if not self.dead and not self.skin:
             x, y = int(self.x - cx), int(self.y - cy - 14)
             eye = (255, 230, 120) if self.tier < 3 else (190, 240, 255)
             for ex in (-5, 5):
@@ -179,7 +191,7 @@ class Lair:
     @staticmethod
     def _make(kind):
         s = pygame.Surface((96, 84), pygame.SRCALPHA)
-        hide = {"wolf": (120, 100, 80), "goblin": (100, 120, 60), "bandit": (140, 90, 70), "boar": (110, 80, 54),
+        hide = {"slime": (96, 150, 96), "goblin": (100, 120, 60), "bandit": (140, 90, 70), "boar": (110, 80, 54),
                 "stalker": (60, 44, 80), "wraith": (90, 110, 120)}[kind]
         pygame.draw.ellipse(s, (0, 0, 0, 90), (6, 66, 84, 16))
         pygame.draw.polygon(s, (60, 40, 26), [(10, 74), (48, 8), (86, 74)])            # poles
@@ -306,13 +318,14 @@ class Wilds:
             m = Mob(kind, x, y, (x, y), 140, self.rng, scale=1.0)
             m.name, m.max_hp, m.hp = name, 30 * tier + 26, 30 * tier + 26
             m.radius, m.damage, m.speed = 20, 3 + tier, 84
+            m.skin_scale = 1.4                       # champions are bigger
             m.color = tuple(min(255, int(c * 1.25)) for c in m.color)
             self.event = dict(kind="champion", x=x, y=y, mobs=[m], champion=m, time=150.0, tier=tier,
                               title="A champion prowls: %s" % name)
             self.world.toast("Merlin: I sense a champion out there... %s!" % name, (255, 200, 140))
         else:
             x, y = CARAVAN_SPOT
-            kind = "wolf" if tier == 1 else ("bandit" if tier == 2 else "stalker")
+            kind = "slime" if tier == 1 else ("bandit" if tier == 2 else "stalker")
             mobs = []
             for i in range(4):
                 a = i * math.tau / 4

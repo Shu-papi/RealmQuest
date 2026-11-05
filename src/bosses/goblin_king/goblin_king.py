@@ -62,7 +62,7 @@ def smooth_or_pixel(frame, scale, native_nearest=False, force_pixel=False,
     return pygame.transform.smoothscale(frame, size)
 
 
-def compute_big_scale():
+def compute_big_scale(base_scale=None):
     """Scale for the heavy/special sheets so the boss's idle pose is exactly as
     tall as the base sheet's idle pose (no size pop when an attack starts)."""
     if not cfg.AUTO_MATCH_SIZE:
@@ -71,12 +71,12 @@ def compute_big_scale():
         pygame.Rect(0, 0, cfg.FRAME_W, cfg.FRAME_H))
     big = load_image(cfg.HEAVY_SHEET).subsurface(
         pygame.Rect(0, 0, cfg.BIG_CELL, cfg.BIG_CELL))
-    base_h = base.get_bounding_rect().height * cfg.BASE_SCALE
+    base_h = base.get_bounding_rect().height * (base_scale or cfg.BASE_SCALE)
     big_h = big.get_bounding_rect().height
     return base_h / big_h
 
 
-def slice_base_sheet(path):
+def slice_base_sheet(path, base_scale=None):
     """frames[row][col] for idle and walk."""
     sheet = load_image(path)
     cols = sheet.get_width() // cfg.FRAME_W
@@ -86,7 +86,7 @@ def slice_base_sheet(path):
         row = []
         for c in range(cols):
             rect = pygame.Rect(c * cfg.FRAME_W, r * cfg.FRAME_H, cfg.FRAME_W, cfg.FRAME_H)
-            row.append(smooth_or_pixel(sheet.subsurface(rect), cfg.BASE_SCALE,
+            row.append(smooth_or_pixel(sheet.subsurface(rect), base_scale or cfg.BASE_SCALE,
                                        native_nearest=True, force_pixel=cfg.PIXELATE_BASE,
                                        pixel_size=cfg.PIXEL_SIZE_BASE))
         frames.append(row)
@@ -125,10 +125,29 @@ def sector_points(cx, cy, radius, angle, arc, squash=1.0, steps=24):
 
 # ====================== BOSS ======================
 class GoblinKing:
-    def __init__(self, x, y):
+    """The Goblin King. `tuning` overrides boss_config for one instance (the game uses
+    boss_config.IN_GAME): base_scale, dist_k, squash, max_hp, speed, damage, overhead."""
+
+    def __init__(self, x, y, tuning=None):
+        t = dict(tuning or {})
         self.x, self.y = x, y
-        self.max_hp = self.hp = cfg.MAX_HP
-        self.speed = cfg.WALK_SPEED
+        self.base_scale = t.get("base_scale", cfg.BASE_SCALE)
+        self.k = self.base_scale / cfg.BASE_SCALE            # sprite size compared to the config
+        self.dk = t.get("dist_k", 1.0)                       # ranges and dash distances
+        self.squash = t.get("squash", cfg.GROUND_SQUASH)
+        self.feet_offset = cfg.FEET_OFFSET * self.k
+        self.bar_offset = 90 * self.k
+        self.show_overhead = t.get("overhead", True)
+        self.max_hp = self.hp = t.get("max_hp", cfg.MAX_HP)
+        self.speed = t.get("speed", cfg.WALK_SPEED)
+        self.aggro_range = cfg.AGGRO_RANGE * self.dk
+        self.forget_range = None if cfg.FORGET_RANGE is None else cfg.FORGET_RANGE * self.dk
+        self.heavy_range = cfg.HEAVY_TRIGGER_RANGE * self.dk
+        self.special_range = cfg.SPECIAL_TRIGGER_RANGE * self.dk
+        dmg = t.get("damage", {})
+        self.hits = {name: {f: (reach * self.dk, dmg.get(name, {}).get(f, d), arc)
+                            for f, (reach, d, arc) in anim.get("hits", {}).items()}
+                     for name, anim in BIG_ATTACKS.items()}
         self.dir = "down"
         self.facing_left = False
         self.state = "idle"
@@ -145,12 +164,12 @@ class GoblinKing:
         self.font = pygame.font.SysFont(None, 24)
         self.alert_font = pygame.font.SysFont(None, 56)
 
-        self.big_scale = compute_big_scale()
+        self.big_scale = compute_big_scale(self.base_scale)
         self.load_frames()
 
     def load_frames(self):
         """(Re)build every sprite frame."""
-        self.base = slice_base_sheet(cfg.SHEET)
+        self.base = slice_base_sheet(cfg.SHEET, self.base_scale)
         self.big = {"heavy": slice_big_sheet(cfg.HEAVY_SHEET, self.big_scale),
                     "special": slice_big_sheet(cfg.SPECIAL_SHEET, self.big_scale)}
 
@@ -162,13 +181,13 @@ class GoblinKing:
     @property
     def ground(self):
         """Point on the floor under the boss's feet."""
-        return self.x, self.y + cfg.FEET_OFFSET
+        return self.x, self.y + self.feet_offset
 
     def offset_to(self, target):
         """(dx, dy) from his feet to the target, with dy stretched back out so
         distances and angles are measured on the squashed floor."""
         gx, gy = self.ground
-        return target.x - gx, (target.y - gy) / cfg.GROUND_SQUASH
+        return target.x - gx, (target.y - gy) / self.squash
 
     def set_state(self, state):
         if self.state != state:
@@ -233,10 +252,10 @@ class GoblinKing:
         dist = max(math.hypot(fdx, fdy), 0.001)
 
         if not self.busy:
-            if not self.aggro and dist <= cfg.AGGRO_RANGE:
+            if not self.aggro and dist <= self.aggro_range:
                 self.wake()
-            elif (self.aggro and cfg.FORGET_RANGE is not None
-                  and dist > cfg.FORGET_RANGE):
+            elif (self.aggro and self.forget_range is not None
+                  and dist > self.forget_range):
                 self.aggro = False
 
             if not self.aggro:
@@ -248,11 +267,11 @@ class GoblinKing:
                 else:
                     self.dir = "up" if fdy < 0 else "down"
 
-                if self.special_cooldown == 0 and dist <= cfg.SPECIAL_TRIGGER_RANGE:
+                if self.special_cooldown == 0 and dist <= self.special_range:
                     self.start_attack("special")
-                elif self.heavy_cooldown == 0 and dist <= cfg.HEAVY_TRIGGER_RANGE:
+                elif self.heavy_cooldown == 0 and dist <= self.heavy_range:
                     self.start_attack("heavy")
-                elif dist > cfg.HEAVY_TRIGGER_RANGE:
+                elif dist > self.heavy_range:
                     self.set_state("walk")
                     self.x += rdx / real * self.speed * dt
                     self.y += rdy / real * self.speed * dt
@@ -263,9 +282,9 @@ class GoblinKing:
 
         # rush / jump forward during the dash frames
         dash = anim.get("dash")
-        if dash and dash[0] <= self.frame_index <= dash[1] and dist > 40:
-            self.x += rdx / real * dash[2] * dt
-            self.y += rdy / real * dash[2] * dt
+        if dash and dash[0] <= self.frame_index <= dash[1] and dist > 40 * self.dk:
+            self.x += rdx / real * dash[2] * self.dk * dt
+            self.y += rdy / real * dash[2] * self.dk * dt
 
         # advance animation
         self.frame_time += dt
@@ -279,13 +298,22 @@ class GoblinKing:
                 self.frame_index = 0
 
         # deal damage on hit frames (once per hit)
-        hit = anim.get("hits", {}).get(self.frame_index)
+        hit = self.hits.get(self.state, {}).get(self.frame_index)
         if hit and self.frame_index not in self.hits_done:
             self.hits_done.add(self.frame_index)
             reach, damage, arc = hit
             tdx, tdy = self.offset_to(target)
             if math.hypot(tdx, tdy) <= reach and self.in_arc(tdx, tdy, arc):
-                target.hp -= damage
+                self.hurt_target(target, damage)
+
+    @staticmethod
+    def hurt_target(target, damage):
+        """target.hurt(damage) when the target has it (the game's hero), else target.hp -= damage."""
+        hurt = getattr(target, "hurt", None)
+        if callable(hurt):
+            hurt(damage)
+        else:
+            target.hp -= damage
 
     # ---------- indicators ----------
     def draw_telegraph(self, screen):
@@ -294,12 +322,13 @@ class GoblinKing:
         if not cfg.SHOW_INDICATORS or self.dead or not self.busy:
             return
         anim = get_anim(self.state)
-        upcoming = [f for f in anim.get("hits", {})
+        hits = self.hits.get(self.state, {})
+        upcoming = [f for f in hits
                     if f >= self.frame_index and f not in self.hits_done]
         if not upcoming:
             return
         hit_frame = min(upcoming)
-        reach, _, arc = anim["hits"][hit_frame]
+        reach, _, arc = hits[hit_frame]
         # smooth progress through the frames, so slow attacks fill up slowly
         pos = self.frame_index + self.frame_time * anim["fps"]
         progress = min(1.0, pos / hit_frame) if hit_frame > 0 else 1.0
@@ -321,9 +350,9 @@ class GoblinKing:
 
     def draw_overhead(self, screen):
         """Boss name above the HP bar, and a '!' when he notices the player."""
-        if not cfg.SHOW_INDICATORS or self.dead:
+        if not cfg.SHOW_INDICATORS or self.dead or not self.show_overhead:
             return
-        bar_y = self.y - 90
+        bar_y = self.y - self.bar_offset
         name = self.font.render(cfg.BOSS_NAME, True, (255, 255, 255))
         screen.blit(name, name.get_rect(midbottom=(self.x, bar_y - 3)))
         if self.alert_timer > 0:
@@ -331,7 +360,17 @@ class GoblinKing:
             screen.blit(mark, mark.get_rect(midbottom=(self.x, bar_y - 22)))
 
     # ---------- draw ----------
-    def draw(self, screen):
+    def draw(self, screen, cam=(0, 0)):
+        """Draw at world position minus `cam` (the game's camera); (0, 0) = screen coords."""
+        if cam == (0, 0):
+            return self._draw(screen)
+        self.x, self.y = self.x - cam[0], self.y - cam[1]
+        try:
+            self._draw(screen)
+        finally:
+            self.x, self.y = self.x + cam[0], self.y + cam[1]
+
+    def _draw(self, screen):
         self.draw_telegraph(screen)          # on the floor, under the sprite
 
         anim = get_anim(self.state)
@@ -343,13 +382,13 @@ class GoblinKing:
             side = "left" if self.facing_left else "right"
             image = sheet[side][col]
             ax = image.get_width() - sheet["ax"] if self.facing_left else sheet["ax"]
-            top_left = (self.x - ax, self.y + cfg.FEET_OFFSET - sheet["ay"])
+            top_left = (self.x - ax, self.y + self.feet_offset - sheet["ay"])
         else:
             image = self.base[cfg.DIRECTION_ROWS[self.dir]][col]
             bounds = image.get_bounding_rect()
             top_left = (
                 self.x - image.get_width() / 2,
-                self.y + cfg.FEET_OFFSET - bounds.bottom,
+                self.y + self.feet_offset - bounds.bottom,
             )
 
         if self.hurt_timer > 0 or self.dead:
@@ -362,9 +401,11 @@ class GoblinKing:
                 image.set_alpha(100)
         screen.blit(image, top_left)
 
+        if not self.show_overhead:
+            return
         # boss HP bar
         bar_w = 80
-        bar_x, bar_y = self.x - bar_w / 2, self.y - 90
+        bar_x, bar_y = self.x - bar_w / 2, self.y - self.bar_offset
         pygame.draw.rect(screen, (64, 0, 0), (bar_x, bar_y, bar_w, 8))
         pygame.draw.rect(screen, (220, 50, 50),
                          (bar_x, bar_y, bar_w * self.hp / self.max_hp, 8))

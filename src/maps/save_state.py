@@ -18,6 +18,11 @@ try:
 except ImportError:
     from combat import PLAYER_MAX_HP, POTION_START
 
+from skills import classes as hero_classes      # combat.py put src/ on the import path
+
+DEFAULT_HERO_NAME = "Himmel"
+DEFAULT_HERO_CLASS = "warrior"
+
 SAVE_PATH = Path(__file__).resolve().parents[2] / "savegame.json"
 
 ARMOR_HP = 8              # max HP per armor level
@@ -54,6 +59,8 @@ def level_progress(xp: int):
 
 @dataclass
 class SaveState:
+    hero_name: str = DEFAULT_HERO_NAME            # chosen on the name screen
+    hero_class: str = DEFAULT_HERO_CLASS          # warrior / mage / archer
     gold: int = 0
     potions: int = POTION_START
     sword_lv: int = 0
@@ -72,8 +79,14 @@ class SaveState:
         return level_of(self.xp)
 
     @property
+    def base_hp(self) -> int:
+        """Max HP of the chosen class before upgrades and levels."""
+        return hero_classes.stats(self.hero_class)["hp"] if self.hero_class in hero_classes.CLASS_STATS \
+            else PLAYER_MAX_HP
+
+    @property
     def max_hp(self) -> int:
-        return (PLAYER_MAX_HP + ARMOR_HP * self.armor_lv + HP_PER_LEVEL * (self.level - 1)
+        return (self.base_hp + ARMOR_HP * self.armor_lv + HP_PER_LEVEL * (self.level - 1)
                 + sum(v for f, v in BONUS_HP.items() if f in self.flags))
 
     def level_damage(self) -> int:
@@ -91,7 +104,9 @@ class SaveState:
         return HERB_HEAL * self.herb_lv
 
     def apply_to(self, pc):
-        """Push upgrades onto a PlayerCombat."""
+        """Push the class and upgrades onto a PlayerCombat."""
+        if getattr(pc, "character_class", None) != self.hero_class:
+            pc.apply_class(self.hero_class)
         pc.max_hp = self.max_hp
         pc.dmg_bonus = self.sword_lv + self.level_damage()
         pc.potions = self.potions
@@ -102,9 +117,11 @@ class SaveState:
         self.potions = pc.potions
 
     # ---- persistence ----------------------------------------------------------
-    def reset(self):
-        """Start over. Sets are cleared in place so views sharing them stay valid."""
+    def reset(self, hero_name: str | None = None, hero_class: str | None = None):
+        """Start over (optionally as a new hero). Sets are cleared in place so views sharing them stay valid."""
         fresh = SaveState()
+        self.hero_name = clean_name(hero_name) if hero_name else DEFAULT_HERO_NAME
+        self.hero_class = hero_class if hero_class in hero_classes.CLASS_STATS else DEFAULT_HERO_CLASS
         for name in ("gold", "potions", "sword_lv", "armor_lv", "boots_lv", "herb_lv", "raids", "xp"):
             setattr(self, name, getattr(fresh, name))
         self.cleared.clear()
@@ -113,7 +130,8 @@ class SaveState:
 
     def to_dict(self) -> dict:
         return {
-            "version": 1,
+            "version": 2,
+            "hero_name": self.hero_name, "hero_class": self.hero_class,
             "gold": self.gold, "potions": self.potions,
             "sword_lv": self.sword_lv, "armor_lv": self.armor_lv,
             "boots_lv": self.boots_lv, "herb_lv": self.herb_lv, "raids": self.raids, "xp": self.xp,
@@ -149,6 +167,11 @@ class SaveState:
             v = data.get(name)
             if isinstance(v, int) and v >= 0:
                 setattr(s, name, v)
+        name = data.get("hero_name")                  # saves from before heroes had names: Himmel
+        if isinstance(name, str) and clean_name(name):
+            s.hero_name = clean_name(name)
+        if data.get("hero_class") in hero_classes.CLASS_STATS:
+            s.hero_class = data["hero_class"]
         for name in ("cleared", "keepsakes", "flags"):
             v = data.get(name)
             if isinstance(v, list):
@@ -161,3 +184,14 @@ class SaveState:
             elif nxt is None:
                 s.xp = LEVEL_XP[MAIN_MIN_LEVEL["lich"] - 1]
         return s
+
+
+NAME_MAX = 14
+
+
+def clean_name(name) -> str:
+    """Letters, digits, spaces, ' and - only; at most NAME_MAX characters; trimmed."""
+    if not isinstance(name, str):
+        return ""
+    keep = "".join(ch for ch in name if ch.isalnum() or ch in " '-")
+    return " ".join(keep.split())[:NAME_MAX].strip()

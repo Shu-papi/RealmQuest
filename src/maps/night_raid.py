@@ -71,6 +71,12 @@ class RaidMonster(Enemy):
         self.path = path
         self.idx = 1
         self.claw = rng.uniform(0.2, 1.0)
+        if sid == "goblin":            # the Goblin Dungeon's own monsters come down the west road
+            if rng.random() < 0.6:
+                self.name, self.skin = "Goblin Shaman", "goblin_shaman"
+            else:
+                self.name, self.skin = "Goblin War Boar", "giant_boar"
+                self.radius, self.max_hp, self.hp = 20, self.max_hp + 3, self.hp + 3
         self.off = (rng.uniform(-28, 28), rng.uniform(-14, 14))
 
     def step(self, dt, player, ground, pc, night):
@@ -78,8 +84,12 @@ class RaidMonster(Enemy):
             return
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.hit_flash = max(0.0, self.hit_flash - dt)
+        if self.cc_tick(dt):
+            return
         dp = math.hypot(player.x - self.x, player.y - self.y)
+        self.face_x = 0
         if dp < 220 and not pc.dead:                     # chase Himmel
+            self.face_x = 1 if player.x > self.x else -1
             if dp > self.radius + 22:
                 self._move(player.x - self.x, player.y - self.y, dt, ground)
             elif self.attack_cd <= 0 and pc.hurt(self.damage, player, ground, self.x, self.y):
@@ -101,7 +111,8 @@ class RaidMonster(Enemy):
 
     def _move(self, dx, dy, dt, ground):
         d = math.hypot(dx, dy) or 1.0
-        sx, sy = dx / d * self.speed * dt, dy / d * self.speed * dt
+        v = self.speed * self.speed_k * dt
+        sx, sy = dx / d * v, dy / d * v
         if ground is None:                 # on the road: just walk
             self.x += sx
             self.y += sy
@@ -113,7 +124,7 @@ class RaidMonster(Enemy):
 
     def draw(self, surf, cx, cy):
         super().draw(surf, cx, cy)
-        if not self.dead:      # glowing eyes, so they read at night
+        if not self.dead and not self.skin:      # glowing eyes, so they read at night
             x, y = int(self.x - cx), int(self.y - cy - 14)
             for ex in (-5, 5):
                 surf.fill((255, 70, 50), (x + ex - 1, y - 3, 3, 2))

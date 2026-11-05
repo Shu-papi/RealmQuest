@@ -58,7 +58,7 @@ PLATE_CENTER = (480, 100)
 CLOSE = (782, 84, 40, 40)            # sits on the top-right corner of the panel
 TAB_X, TAB_Y, TAB_W, TAB_H, TAB_GAP = 182, 150, 176, 52, 12
 CONTENT_X, CONTENT_Y, CONTENT_W = 384, 150, 380
-ROW_H = {"audio": 70, "video": 70, "controls": 32}
+ROW_H = {"audio": 70, "video": 70, "controls": 29}
 HINT_Y = 512
 
 

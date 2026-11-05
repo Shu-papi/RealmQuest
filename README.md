@@ -5,7 +5,7 @@ This repository contains a fantasy role-playing game developed as an educational
 
 # RealmQuest: Beyond the Veil
 
-A fantasy action RPG prototype in Pygame. Oakwood Vale is sealed inside **the Veil**, and monsters raid the village every night. You are **Himmel**, a hero summoned by **Merlin the Great Sage**, who guards the village and guides you from Oakwood. Explore the village, defend it at night, and fight through three dungeons to shatter the three **Veil Anchors** and free Oakwood.
+A fantasy action RPG prototype in Pygame. Oakwood Vale is sealed inside **the Veil**, and monsters raid the village every night. You are **the hero you create** (your own name, and Warrior, Mage or Archer), summoned by **Merlin the Great Sage**, who guards the village and guides you from Oakwood. Explore the village, defend it at night, and fight through three dungeons to shatter the three **Veil Anchors** and free Oakwood.
 
 See [CAMPAIGN_STORY.md](CAMPAIGN_STORY.md) for the story, the dungeon route and the villagers.
 
@@ -24,12 +24,35 @@ Progress is saved automatically to `savegame.json` in the project root:
 - when you shatter an anchor,
 - after a night raid.
 
-The title screen offers **Continue** or **N: New Game**. Delete the file to reset.
+## Home, your hero and the story
+- **Home screen:** Continue (shown when there is a save, with your hero's name, class, level and anchors), New Game, Settings and Exit.
+- **New Game:** type your hero's name (or press Tab / the dice for a random one), choose **Warrior**, **Mage** or **Archer**, and you are straight in Oakwood.
+- **The story uses your name** everywhere: every dialog, the journal, toasts and the ending. (Saves from before this update load as Himmel the Warrior.)
+- **Settings** (home screen or the pause menu): volumes, fullscreen and key bindings. They are saved to `.realmquest_settings.json` in your home folder.
+- **Pause (Esc):** Resume, Settings, Save & Quit to Menu, Quit Game.
+
+Delete `savegame.json` to reset.
+
+## The three heroes
+| | Warrior | Mage | Archer |
+|---|---|---|---|
+| HP | 48 | 34 | 40 |
+| Bars | Stamina 100, Energy 100 | Mana 120, Stamina 80 | Stamina 110, Energy 100 |
+| Basic attack | Sword (+1 damage) | Staff | Dagger (fastest) |
+| K | Whirlwind: spin, hits all around | Fireball: explodes on impact | Arrow Volley: three arrows |
+| U | Shield Bash: lunge, stuns | Frost Nova: ring that slows | Piercing Shot: goes through enemies |
+| F (special) | Earthsplitter: huge cone slam | Meteor: falls where you face | Rain of Arrows: 3 s of arrows on an area |
+
+- **Stamina** pays for the dash (25 each) and refills quickly.
+- **Mana** (Mage) refills steadily. **Energy** (Warrior, Archer) refills slowly and also fills when your basic attacks land.
+- Skills and the dash work **in the overworld and in every dungeon**. The skill bar (bottom right) shows cooldowns, costs and keys.
+- The numbers live in `src/skills/classes.py` and `src/skills/skills.py`.
 
 ## Controls
 - **WASD / Arrow keys:** move
-- **Space / J / Left click:** sword attack (also breaks pots and crates)
-- **Shift:** dash
+- **Space / J / Left click:** basic attack (also breaks pots and crates)
+- **K / U / F:** skill 1, skill 2, special
+- **Shift:** dash (costs stamina)
 - **H / P:** healing potion
 - **E / Enter:** talk, open doors and gates, read tablets, drink from fonts, enter portals
 - **Tab / L:** journal (quests and lore)
@@ -89,13 +112,14 @@ The overworld is now about twice as big (4400 x 3200).
 | Ashen Pit | Deep Forest, north | 8-11 |
 | Bone Hollow | Deep Forest, east | 9-12 |
 
-- **The Deep Forest** (east) is swarming with roaming packs: thornback boars at its edge, shadow stalkers and forest wraiths deeper in. Weaker packs (wolves, goblin scouts, bandits) roam the Thornwood and the Southfields. Packs chase you when you get close and come back a while after you wipe them out.
-- **Monster lairs:** six hide tents (Wolf Den, Goblin Camp, Bandit Camp, Boar Warren, Stalker Nest, Wraith Barrow). They keep sending out monsters while you're near. Destroy one for XP and gold; it's rebuilt a few minutes later.
+- **The Deep Forest** (east) is swarming with roaming packs: wild boars at its edge, shadow stalkers and forest wraiths deeper in. Weaker packs (red, blue and green slimes, goblin scouts, bandits) roam the Thornwood and the Southfields. Packs chase you when you get close and come back a while after you wipe them out.
+- **Monster lairs:** six hide tents (Slime Den, Goblin Camp, Bandit Camp, Boar Warren, Stalker Nest, Wraith Barrow). They keep sending out monsters while you're near. Destroy one for XP and gold; it's rebuilt a few minutes later.
 - **World events,** every couple of minutes:
   - **A champion** roams somewhere for a while. Hunt it down for big XP and gold.
   - **A merchant caravan** is attacked on the Kingsroad. Save it for gold and a potion.
   - Events are marked on the minimap, with a timer at the bottom of the screen.
-- **The sword works anywhere** in the overworld: Space, J or click.
+- **Your attacks, skills and dash work anywhere** in the overworld.
+- **Champions:** Gloomgut the Great Slime, Black Tusk (a huge wild boar) and the Hollow Widow.
 
 ## Night raids
 Every night at nightfall, if Himmel is near Oakwood, monsters come down the road from the dungeon you're working on. If he's away exploring, a distant horn sounds and Captain Hale's watch holds the village, with no reward and no penalty.
@@ -126,6 +150,31 @@ Each dungeon has 3 floors, and **every visit generates new floors**. A floor is 
 - **Going back up (Q)** finds the floor exactly as you left it. Leaving the dungeon and coming back gives brand-new floors.
 - **Dying** restarts the room from the room you came from.
 
+### The Goblin Dungeon's monsters
+The Goblin Dungeon, its two goblin caves (Mossy Burrow, Thornwood Den) and the goblins' night raids use the monster sprites:
+- **Goblin Shaman:** keeps its distance and throws fireballs.
+- **Goblin War Boar:** the elite that guards the floor key.
+- **General Grub:** the mini-boss.
+- **Valdur, the Goblin King:** the boss of floor 1-3, with telegraphed attacks (the red area on the floor shows where his hit lands). Dash through it!
+
+The Berserker and Lich King dungeons keep their own monsters.
+
+## Music
+Each place has its own track (files in `audio/music/`, chosen in `src/maps/music.py`):
+
+| Where | Track |
+|---|---|
+| Home, name and class screens, ending | Fantasy Menu Theme |
+| Oakwood by day | medieval |
+| Shops | RPG For Wenches, Ale, and LOOT!! |
+| The wilds by day | In Search of the Philosopher's Stone |
+| The vale at night | Mysterious Calm |
+| Night raids, champions, caravans | Battle Theme A |
+| Goblin Dungeon and goblin caves | Mysterious Calm |
+| Berserker ruins and caves | Ruins of Empire |
+| Lich King's barrows and caves | Snow Theme |
+| Boss fights | Battle Theme A |
+
 ### Inside the rooms
 - **Room layouts** themed per region:
   - Forest: groves, ruins, ponds.
@@ -141,7 +190,8 @@ Each dungeon has 3 floors, and **every visit generates new floors**. A floor is 
 ## Project layout
 | Path | What it is |
 |---|---|
-| `src/maps/dungeon_map.py` | The `Game` (title, overworld/dungeon switching, HUD, story flow) and the dungeon renderer |
+| `src/maps/dungeon_map.py` | The `Game` (home screen, overworld/dungeon switching, HUD, skills, story flow) and the dungeon renderer |
+| `src/maps/music.py` | Which music track plays where |
 | `src/maps/surface_world.py` | The Oakwood overworld (portals, roads, houses, lighting, minimap) |
 | `src/maps/village.py` | Overworld life: NPCs, critters, smoke, day/night, treasure, story scenery |
 | `src/maps/npc_art.py` | Villager sprites and dialog portraits (pixel art, drawn in code) |
@@ -157,14 +207,19 @@ Each dungeon has 3 floors, and **every visit generates new floors**. A floor is 
 | `src/maps/shop.py` | The shop overlay and its item catalogue |
 | `src/maps/journal.py` | The journal overlay (quests and lore) |
 | `src/maps/combat.py` | Player combat and the monster `Encounters` hook (owned by the monster/boss team) |
-| `src/bosses/` | The monster/boss team's folder (the boss framework was reverted on main in #13; the dungeon bosses are placeholders in `src/maps/combat.py`) |
+| `src/bosses/goblin_king/` | Valdur, the Goblin King (`in_game.py` puts him in the dungeon; art in `assets/bosses/goblin_king/`) |
+| `src/monsters/` | Slimes, wild boar, goblin shaman / general / war boar sprites (`game_sprites.py` puts them on the game's enemies) |
+| `src/skills/` | The three classes and their skills |
+| `src/ui/` | Home screen, name entry, class select, settings, pause, hero HUD |
 
 ## Notes for the monster and boss team
 - **The `Encounters` contract at the top of `combat.py` is unchanged.** The map only reads `state`, `locked`, `exit_open()`, `dialog_request` and `outro_request`, and `dungeon.lock_rect`.
 - **Room roles:** `dungeon.room_roles[k]` says what each room is: `start`, `combat`, `guard`, `seal`, `vault`, `miniboss`, `shrine`, `trap`, `stairs`, `antechamber` or `boss`. `Encounters` reads it:
   - Monster-free rooms start as `"safe"` and never lock.
   - Enemy counts depend on the role.
-  - `miniboss` rooms spawn a **placeholder** mini-boss (`MINIBOSSES` in `combat.py`) with a name and HP bar. Swap in real mini-bosses there.
+  - `miniboss` rooms spawn a mini-boss (`MINIBOSSES` in `combat.py`) with a name and HP bar. The Goblin Dungeon's is General Grub (sprite); the others are still shapes.
+- **Sprites on enemies:** set `enemy.skin` to a key of `src/monsters/game_sprites.py` (`SKINS`); enemies without a skin are drawn as before.
+- **Skills** hit anything with `x`, `y`, `radius`, `dead` and `take_damage(n)`; `stun_t` / `slow_t` are read by `Enemy.update`, `wilds.Mob.step` and `night_raid.RaidMonster.step`.
 - **Keys and seals** drop when a guard, seal or mini-boss room's `state` becomes `"cleared"`. The map handles them, so any monster code that clears rooms works.
 - **`exit_open()`:** on boss floors it is true once the boss room is cleared. On floors 1-2 it is always true, because the locked stairs door holds the player back.
 - **Room centres stay clear.** Every room keeps a clear area of ±5 tiles around its centre, so monsters spawned near the centre always have floor to stand on.

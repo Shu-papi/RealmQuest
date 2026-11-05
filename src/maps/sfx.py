@@ -1,8 +1,9 @@
-"""sfx.py - tiny procedural sound effects and ambient music.
+"""sfx.py - tiny procedural sound effects.
 
 No audio files are needed: every sound is generated from simple waves when the
 game starts. If the computer has no sound device, everything here quietly does
-nothing and the game runs without audio.
+nothing and the game runs without audio. Background music is in music.py
+(the tracks in audio/music/).
 """
 from __future__ import annotations
 
@@ -17,9 +18,8 @@ class Sfx:
     def __init__(self):
         self.ok = False
         self.sounds: dict[str, pygame.mixer.Sound] = {}
-        self.music_cache: dict[int, pygame.mixer.Sound] = {}
-        self.music_chan = None
         self.muted = False
+        self.volume = 1.0
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
@@ -90,6 +90,21 @@ class Sfx:
                                  T(1047, 1047, 0.50, 0.32, decay=2.5)),
             "death": T(260, 50, 0.70, 0.45, "saw", decay=2.5),
             "blip": T(520, 520, 0.035, 0.18, decay=2.0),
+            # hero skills
+            "whirlwind": self._seq(T(500, 900, 0.12, 0.26, noise=0.8, decay=1.0),
+                                   T(900, 400, 0.18, 0.26, noise=0.8, decay=2.5)),
+            "shield_bash": self._seq(T(160, 80, 0.12, 0.45, "square", noise=0.4, decay=4.0)),
+            "earthsplitter": T(70, 30, 0.9, 0.55, "saw", noise=0.45, decay=1.8, attack=0.02),
+            "fireball": T(300, 160, 0.30, 0.32, "saw", noise=0.55, decay=2.0, attack=0.02),
+            "frost_nova": self._seq(T(1300, 1700, 0.08, 0.20, decay=1.5), T(1700, 900, 0.30, 0.22, noise=0.3,
+                                                                              decay=2.5)),
+            "meteor": T(900, 120, 0.8, 0.35, "sine", noise=0.5, decay=0.8, attack=0.05),
+            "boom": T(110, 40, 0.45, 0.55, "square", noise=0.6, decay=3.0),
+            "arrow_volley": T(2200, 900, 0.10, 0.22, noise=0.7, decay=4.0),
+            "piercing_shot": self._seq(T(700, 1400, 0.10, 0.22, decay=1.0), T(2400, 900, 0.14, 0.26, noise=0.6,
+                                                                               decay=3.0)),
+            "rain_of_arrows": T(2600, 1200, 0.5, 0.20, noise=0.85, decay=1.5),
+            "no_mana": T(200, 160, 0.10, 0.18, "square", decay=3.0),
         }
         for name, samples in defs.items():
             self.sounds[name] = self._make(samples)
@@ -100,36 +115,9 @@ class Sfx:
             return
         snd = self.sounds.get(name)
         if snd is not None:
+            snd.set_volume(self.volume)
             snd.play()
 
-    def _drone(self, f1, f2, dur=4.0):
-        n = int(self.rate * dur)
-        out = []
-        for i in range(n):
-            t = i / self.rate
-            trem = 0.75 + 0.25 * math.sin(2 * math.pi * 0.5 * t)        # whole cycles = loops cleanly
-            s = (0.50 * math.sin(2 * math.pi * f1 * t)
-                 + 0.35 * math.sin(2 * math.pi * f2 * t)
-                 + 0.15 * math.sin(2 * math.pi * f1 * 2 * t))
-            out.append(s * trem * 0.5)
-        return out
-
-    def music(self, dungeon: int | None):
-        """Looping ambient drone, a different pitch for each dungeon (None stops it)."""
-        if not self.ok:
-            return
-        try:
-            if self.music_chan is not None:
-                self.music_chan.stop()
-                self.music_chan = None
-            if dungeon is None or self.muted:
-                return
-            snd = self.music_cache.get(dungeon)
-            if snd is None:
-                f1, f2 = {1: (110.0, 165.0), 2: (82.5, 123.75), 3: (65.0, 97.5)}.get(dungeon, (110.0, 165.0))
-                snd = self._make(self._drone(f1, f2))
-                snd.set_volume(0.22)
-                self.music_cache[dungeon] = snd
-            self.music_chan = snd.play(loops=-1)
-        except Exception:
-            pass
+    def set_volume(self, volume):
+        """0.0 - 1.0 for every sound effect (Settings: master x sfx)."""
+        self.volume = max(0.0, min(1.0, float(volume)))

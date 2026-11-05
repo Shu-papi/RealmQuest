@@ -139,11 +139,9 @@ class InventoryScreen:
         widgets.portrait(surface, portrait_file(cls), (box[0] + 10, box[1] + 8, box[2] - 20, box[3] - 14))
 
         stats = data["stats"]
-        rows = [
-            ("icon_heart.png", "HP", "hp", "max_hp", stats["hp"]),
-            ("icon_shield.png", "ARMOR", "armor", "max_armor", stats["armor"]),
-            ("icon_energy.png", "ENERGY", "energy", "max_energy", stats["energy"]),
-        ]
+        rows = [("icon_heart.png", "HP", "hp", "max_hp", stats["hp"])]
+        for bar in data["bars"]:                  # stamina + mana / energy, like the game's HUD
+            rows.append(("icon_energy.png", bar.upper(), bar, f"max_{bar}", stats[bar]))
         for r, (icon, name, now_attr, max_attr, default) in enumerate(rows):
             ry = y + 250 + r * 40
             now = getattr(self.player, now_attr, default)

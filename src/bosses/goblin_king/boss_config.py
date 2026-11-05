@@ -105,3 +105,16 @@ SPECIAL = {
              12: (150, 120, 120)},  # ground slam, 120 degree cone
     "dash": (7, 10, 260),          # jump toward the player
 }
+# ====================== IN THE GAME ======================
+# The dungeon fight (src/maps) uses these instead of the numbers above, so the
+# boss matches the game's scale: the hero has ~40-60 HP and hits for ~2-10.
+IN_GAME = {
+    "base_scale": 3,          # sprite size (about 2.5x the hero)
+    "dist_k": 0.6,            # ranges, attack reach and dash distances x this
+    "squash": 1.0,            # the dungeon is seen from above: hit areas are round
+    "max_hp": 110,
+    "speed": 70,
+    "overhead": False,        # the game draws his name + HP bar at the top of the screen
+    "damage": {"heavy": {12: 7},              # overhead slam
+               "special": {5: 4, 12: 8}},     # tornado spin, ground slam
+}

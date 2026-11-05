@@ -33,8 +33,10 @@ KEY_ACTIONS = [
     ("move_left",     "Move Left",     "a"),
     ("move_right",    "Move Right",    "d"),
     ("attack",        "Attack",        "j"),
-    ("skill",         "Skill",         "k"),
-    ("dash",          "Dash",          "space"),
+    ("skill",         "Skill 1",       "k"),
+    ("skill_2",       "Skill 2",       "u"),
+    ("special",       "Special",       "f"),
+    ("dash",          "Dash",          "left shift"),
     ("switch_weapon", "Switch Weapon", "q"),
     ("interact",      "Interact",      "e"),
 ]
@@ -116,10 +118,27 @@ class Settings:
                 setattr(settings, name, data[name])
         keys = data.get("key_bindings")
         if isinstance(keys, dict):
+            old_file = "special" not in keys          # saved before the skill keys existed
             for action in settings.key_bindings:
                 if isinstance(keys.get(action), str):
                     settings.key_bindings[action] = keys[action]
+            if old_file and keys.get("dash") == "space":
+                # the old placeholder default; Space is the game's attack key, dash is Shift now
+                settings.key_bindings["dash"] = dict((a, k) for a, _l, k in KEY_ACTIONS)["dash"]
+            settings._resolve_clashes()
         return settings
+
+    def _resolve_clashes(self):
+        """After loading an older file, a new action may share a key: give it back its default
+        (or leave it unbound as '?' if that is taken too), so no key does two things."""
+        defaults = {action: key for action, _l, key in KEY_ACTIONS}
+        seen = {}
+        for action, _l, _k in KEY_ACTIONS:
+            key = self.key_bindings[action]
+            if key in seen:
+                free = defaults[action] if defaults[action] not in self.key_bindings.values() else "?"
+                self.key_bindings[action] = free
+            seen[self.key_bindings[action]] = action
 
     # ---------- applying to pygame ----------
 

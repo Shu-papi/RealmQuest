@@ -54,10 +54,27 @@ LOOKS = {
     "baker":   dict(skin=(232, 188, 150), hair=(150, 96, 52), style="short", eyes=(70, 50, 40),
                     top=(170, 150, 120), pants=(90, 74, 60), boot=(54, 40, 30), acc=(236, 230, 214),
                     extra="apron", soot=True),
+    # the player's hero, one look per class (picked on the class select screen)
+    "hero_warrior": dict(skin=(238, 192, 152), hair=(112, 64, 36), style="helmet", eyes=(50, 80, 140),
+                         top=(150, 158, 176), pants=(74, 58, 52), boot=(46, 32, 28), acc=(178, 40, 46),
+                         extra="armor", held="sword"),
+    "hero_mage":    dict(skin=(238, 196, 160), hair=(70, 46, 96), style="hood", eyes=(150, 90, 220),
+                         top=(92, 52, 150), pants=(64, 36, 110), boot=(42, 30, 52), acc=(120, 70, 190),
+                         held="staff", robe=True, extra="stars"),
+    "hero_archer":  dict(skin=(234, 190, 150), hair=(196, 150, 80), style="hood", eyes=(60, 120, 70),
+                         top=(118, 88, 54), pants=(70, 82, 52), boot=(70, 48, 32), acc=(58, 116, 64),
+                         held="bow"),
 }
 
+CLASS_LOOKS = {"warrior": "hero_warrior", "mage": "hero_mage", "archer": "hero_archer"}
 
-POLES = ("staff", "spear", "pitchfork")
+
+def hero_look(character_class):
+    """Look id for the player's hero of this class ('warrior' / 'mage' / 'archer')."""
+    return CLASS_LOOKS.get(character_class, "hero_warrior")
+
+
+POLES = ("staff", "spear", "pitchfork", "sword", "bow")
 
 
 def _mix_pink(skin):
@@ -378,6 +395,13 @@ def _held_hd(s, lk, held, facing, H, bt, front):
         f(WOOD, (x, TOP + 6, 2, H - TOP - 6))
         pygame.draw.polygon(s, STEEL, [(x - 1, TOP + 7), (x + 3, TOP + 7), (x + 1, TOP - 2)])
         f(STEEL_L, (x, TOP, 1, 5)); f(acc, (x - 1, TOP + 8, 4, 2))
+    elif held == "sword":
+        top = bt - 6
+        f(STEEL_D, (x, top, 3, H - top - 14)); f(STEEL_L, (x, top, 1, H - top - 15))
+        f(GOLD, (x - 2, H - 14, 7, 2)); f(WOOD_D, (x, H - 12, 3, 4)); f(GOLD, (x, H - 8, 3, 2))
+    elif held == "bow":
+        pygame.draw.arc(s, WOOD_D, (x - 5, TOP + 6, 9, H - TOP - 12), -1.5, 1.5, 2)
+        pygame.draw.line(s, (230, 226, 210), (x - 1, TOP + 7), (x - 1, H - 7), 1)
     elif held == "pitchfork":
         f(WOOD, (x, TOP + 6, 2, H - TOP - 6)); f(STEEL_D, (x - 2, TOP + 5, 6, 2))
         for dx in (-2, 1, 3):
@@ -416,7 +440,14 @@ def _bust_hd(lk):
     mouth = _shade((196, 92, 92), skin[0] / 255)
 
     # ---------------------------------------------------------------- behind
-    if held in POLES:
+    if held == "sword":
+        x = 108
+        f(STEEL_D, (x, 0, 8, 128)); f(STEEL, (x + 1, 0, 5, 128)); f(STEEL_L, (x + 1, 0, 2, 128))
+    elif held == "bow":
+        pygame.draw.arc(s, WOOD_D, (90, -6, 34, 140), -1.45, 1.45, 6)
+        pygame.draw.arc(s, WOOD, (91, -6, 32, 140), -1.45, 1.45, 3)
+        pygame.draw.line(s, (232, 228, 214), (104, 0), (104, 128), 1)
+    elif held in POLES:
         x = 108
         f(WOOD_D, (x, 0, 7, 128)); f(WOOD, (x + 1, 0, 4, 128))
         if held == "staff":

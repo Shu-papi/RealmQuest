@@ -25,7 +25,7 @@ import pygame
 
 from . import theme, widgets
 from .assets import get_image, get_font
-from .class_info import CLASS_ORDER, info, portrait_file, badge_file, starting_weapon
+from .class_info import CLASS_ORDER, info, portrait_file, badge_file
 from .text import draw_text
 
 START = "start"
@@ -38,10 +38,17 @@ START_RECT = (310, 530, 340, 56)
 BACK_RECT = (96, 536, 150, 44)
 
 
+SKILL_KEYS = {"skill": "K", "skill_2": "U", "special": "F"}
+
+
 class ClassSelect:
-    def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H):
+    def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H, hero_name="", portraits=None,
+                 skill_keys=None):
         self.width = width
         self.height = height
+        self.hero_name = hero_name               # shown above the cards ("Aria, choose your path")
+        self.portraits = portraits or {}         # {class: Surface} - the game's own hero art
+        self.skill_keys = dict(SKILL_KEYS, **(skill_keys or {}))
         self.selected = 0
         self.time = 0.0
         self.focus_start = False     # True when the START button is highlighted (mouse)
@@ -102,7 +109,10 @@ class ClassSelect:
         else:
             surface.fill(theme.SKY[0])
         widgets.dim(surface, 170)
-        widgets.title_plate(surface, (self.width // 2, 64), "CHOOSE YOUR HERO")
+        widgets.title_plate(surface, (self.width // 2, 52), "CHOOSE YOUR HERO")
+        if self.hero_name:
+            draw_text(surface, f"{self.hero_name.upper()}, CHOOSE YOUR PATH", get_font(theme.FONT_SMALL),
+                      theme.TORCH_LIGHT, (self.width // 2, 88), outline=1, center=True)
         for i, rect in enumerate(self.card_rects()):
             self._draw_card(surface, i, rect)
         widgets.button(surface, START_RECT, f"START AS {info(self.chosen)['name'].upper()}",
@@ -136,23 +146,37 @@ class ClassSelect:
         box = (x + 22, y + 84, w - 44, 142)
         pygame.draw.rect(surface, theme.OUTLINE, (box[0] - 2, box[1] - 2, box[2] + 4, box[3] + 4))
         pygame.draw.rect(surface, theme.STONE_DARK, box)
-        widgets.portrait(surface, portrait_file(cls), (box[0] + 8, box[1] + 6, box[2] - 16, box[3] - 10))
+        art = self.portraits.get(cls)
+        inner = (box[0] + 8, box[1] + 6, box[2] - 16, box[3] - 10)
+        if art is not None:              # the hero exactly as they look in the world
+            k = min(inner[2] / art.get_width(), inner[3] / art.get_height())
+            if k >= 1:
+                k = int(k)
+            img = pygame.transform.scale(art, (int(art.get_width() * k), int(art.get_height() * k)))
+            surface.blit(img, (inner[0] + (inner[2] - img.get_width()) // 2, inner[1] + inner[3] - img.get_height()))
+        else:
+            widgets.portrait(surface, portrait_file(cls), inner)
 
-        # stats
+        # stats: HP, then the two resource bars of this class
         stats = data["stats"]
-        rows = [("icon_heart.png", "HP", stats["hp"]), ("icon_shield.png", "ARMOR", stats["armor"]),
-                ("icon_energy.png", "ENERGY", stats["energy"])]
+        rows = [("icon_heart.png", "HP", stats["hp"])]
+        for bar in data["bars"]:
+            rows.append(("icon_energy.png", bar.upper(), stats[bar]))
         for r, (icon, name, value) in enumerate(rows):
-            ry = y + 238 + r * 30
-            widgets.icon(surface, icon, (x + 24, ry), size=24)
-            draw_text(surface, name, label, theme.TEXT, (x + 56, ry + 12), outline=2, middle=True)
-            draw_text(surface, str(value), label, theme.TEXT, (x + w - 60, ry + 12), outline=2,
+            ry = y + 230 + r * 27
+            widgets.icon(surface, icon, (x + 24, ry), size=22)
+            draw_text(surface, name, label, theme.TEXT, (x + 54, ry + 11), outline=2, middle=True)
+            draw_text(surface, str(value), label, theme.TEXT, (x + w - 60, ry + 11), outline=2,
                       middle=True)
 
-        # starting weapon
-        weapon = starting_weapon(cls)
-        pygame.draw.rect(surface, theme.WOOD, (x + 22, y + 330, w - 44, 2))       # divider line
-        draw_text(surface, "STARTS WITH", get_font(theme.FONT_SMALL), theme.TEXT_DIM,
-                  (x + 24, y + 340), outline=1, shadow=False)
-        widgets.icon(surface, f"weapon_{weapon.weapon_id}.png", (x + 22, y + 352), size=32)
-        draw_text(surface, weapon.name, label, theme.TEXT, (x + 62, y + 368), outline=2, middle=True)
+        # skills
+        small = get_font(theme.FONT_SMALL)
+        pygame.draw.rect(surface, theme.WOOD, (x + 22, y + 314, w - 44, 2))       # divider line
+        for i, (slot, name, _desc) in enumerate(data["skills"]):
+            sy = y + 322 + i * 21
+            key = self.skill_keys.get(slot, "?")
+            pygame.draw.rect(surface, theme.OUTLINE, (x + 22, sy, 22, 17))
+            pygame.draw.rect(surface, theme.BRASS, (x + 22, sy, 22, 17), 1)
+            draw_text(surface, key, small, theme.TITLE, (x + 33, sy + 9), outline=1, shadow=False, center=True)
+            color = theme.TORCH_LIGHT if slot == "special" else theme.TEXT
+            draw_text(surface, name.upper(), small, color, (x + 52, sy + 1), outline=1, shadow=False)

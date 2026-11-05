@@ -47,9 +47,13 @@ FLOOR_WEAPONS = ["battle_axe", "fire_wand", "short_bow", "greatsword", "crossbow
 
 def new_player(character_class):
     stats = info(character_class)["stats"]          # placeholder numbers from class_info.py
-    return types.SimpleNamespace(hp=stats["hp"], max_hp=stats["hp"],
-                                 armor=stats["armor"], max_armor=stats["armor"],
-                                 energy=stats["energy"], max_energy=stats["energy"])
+    resource = info(character_class)["resource"]                     # mana or energy
+    values = {"hp": stats["hp"], "max_hp": stats["hp"],
+              "armor": stats["stamina"], "max_armor": stats["stamina"],     # the HUD's 2nd bar
+              "energy": stats[resource], "max_energy": stats[resource],     # the HUD's 3rd bar
+              "stamina": stats["stamina"], "max_stamina": stats["stamina"]}
+    values.update({resource: stats[resource], "max_" + resource: stats[resource]})
+    return types.SimpleNamespace(**values)
 
 
 def draw_floor(screen):

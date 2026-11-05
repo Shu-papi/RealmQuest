@@ -91,6 +91,7 @@ class Journal:
 
     # ---- drawing ------------------------------------------------------------------
     def _wrap(self, text, font, width):
+        text = story.named(text)
         out, cur = [], ""
         for w in text.split(" "):
             test = (cur + " " + w).strip()
@@ -103,6 +104,7 @@ class Journal:
         return out
 
     def _text(self, surf, s, font, col, x, y):
+        s = story.named(s)                  # the player's chosen hero name
         surf.blit(font.render(s, True, (0, 0, 0)), (x + 1, y + 1))
         surf.blit(font.render(s, True, col), (x, y))
 

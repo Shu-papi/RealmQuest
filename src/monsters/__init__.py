@@ -5,4 +5,5 @@ monsters_config.py  Goblin General, Giant Boar, slimes: sheet layout + starter s
                     (assets/monsters/goblin_army/)
 monster_viewer.py   animated preview of the goblin_army sheets
 make_monsters.py    regenerates the goblin_army sheets with Pillow
+game_sprites.py     puts these sprites on the game's enemies (enemy.skin = "slime_red", ...)
 """
