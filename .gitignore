@@ -1,1 +1,7 @@
 __pycache__/
+*.pyc
+.venv/
+venv/
+.env
+# the game writes the player's progress here
+savegame.json

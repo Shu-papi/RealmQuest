@@ -1,0 +1,160 @@
+{
+  "game": {
+    "title": "Kendi Pygame",
+    "version": "1.0.0",
+    "target_fps": 60,
+    "fullscreen": false,
+    "debug_mode": false,
+    "time_scale": 1.0,
+    "world_gravity": 0.0,
+    "pixel_per_unit": 1
+  },
+  "screen": {
+    "width": 960,
+    "height": 540,
+    "ground_y": 450,
+    "background_color": [27, 27, 42],
+    "ground_color": [18, 18, 28],
+    "window_title": "Kendi sprites"
+  },
+  "camera": {
+    "follow_player": true,
+    "smoothness": 1.0,
+    "min_x": 0,
+    "max_x": 960,
+    "min_y": 0,
+    "max_y": 540
+  },
+  "character": {
+    "name": "Kendi",
+    "character_height": 250,
+    "height_px": 250,
+    "x_start": 480,
+    "y_start": 450,
+    "hitbox_width": 60,
+    "hitbox_height": 120,
+    "left_limit_px": 60,
+    "right_limit_px": 900,
+    "origin_anchor": [122, 232],
+    "face_direction": 1
+  },
+  "movement": {
+    "walk_speed": 90,
+    "run_speed": 220,
+    "strafe_speed": 0,
+    "jump_force": 0,
+    "gravity": 0,
+    "friction": 0.8,
+    "acceleration": 0,
+    "deceleration": 0,
+    "left_limit_px": 60,
+    "right_limit_px": 900,
+    "can_move_in_air": false
+  },
+  "combat": {
+    "attack_damage": 12,
+    "attack_cooldown": 0.4,
+    "attack_range_px": 110,
+    "attack_hit_frames": [10, 11, 12],
+    "attack_knockback": 40,
+    "crit_chance": 0.0,
+    "crit_multiplier": 1.5,
+    "combo_window": 0.3,
+    "damage_multiplier": 1.0
+  },
+  "health": {
+    "max_health": 100,
+    "health": 100,
+    "regen_per_second": 0,
+    "invincibility_time": 0.5,
+    "armor": 0,
+    "death_y": 1000
+  },
+  "animation": {
+    "idle_fps": 8,
+    "walk_fps": 12,
+    "run_fps": 14,
+    "attack_fps": 24,
+    "attack_loop": false,
+    "idle_frames": 19,
+    "walk_frames": 21,
+    "run_frames": 14,
+    "attack_frames": 22
+  },
+  "rendering": {
+    "draw_hitboxes": false,
+    "draw_debug_text": false,
+    "shadow_enabled": false,
+    "antialiasing": true,
+    "layer_order": ["ground", "characters", "effects", "hud"]
+  },
+  "ui": {
+    "font_size": 24,
+    "hud_color": [220, 220, 220],
+    "hud_text": "state: {state}   A/D move  Shift run  Space attack",
+    "show_hud": true,
+    "hud_x": 12,
+    "hud_y": 10,
+    "health_bar_enabled": true,
+    "health_bar_color": [255, 80, 80]
+  },
+  "controls": {
+    "move_left": "A / Left Arrow",
+    "move_right": "D / Right Arrow",
+    "run": "Shift",
+    "attack": "Space / J",
+    "quit": "Esc",
+    "dash": "None",
+    "jump": "None"
+  },
+  "audio": {
+    "master_volume": 1.0,
+    "music_volume": 0.7,
+    "sfx_volume": 0.8,
+    "muted": false,
+    "sound_enabled": true
+  },
+  "enemy": {
+    "name": "Enemy",
+    "health": 40,
+    "damage": 8,
+    "speed": 80,
+    "attack_range_px": 60,
+    "attack_cooldown": 1.0,
+    "patrol_range_px": 200,
+    "touch_damage": true
+  },
+  "world": {
+    "ground_level_px": 450,
+    "level_width_px": 960,
+    "level_height_px": 540,
+    "platforms": [],
+    "spawn_x": 120,
+    "spawn_y": 450
+  },
+  "particles": {
+    "enabled": true,
+    "max_particles": 200,
+    "attack_trail_color": [255, 180, 80],
+    "dust_color": [200, 200, 200]
+  },
+  "save": {
+    "autosave_enabled": false,
+    "autosave_interval_seconds": 60,
+    "save_slot": 1
+  },
+  "difficulty": {
+    "level": 1,
+    "enemy_damage_multiplier": 1.0,
+    "player_damage_multiplier": 1.0,
+    "xp_multiplier": 1.0
+  },
+  "extra": {
+    "pixels_per_unit": 1,
+    "damage_multiplier": 1.0,
+    "debug_mode": false,
+    "character_height_alias": 250,
+    "movement_speed": 90,
+    "attack_strength": 12
+  }
+}
