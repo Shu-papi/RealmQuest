@@ -41,7 +41,7 @@ Every visit to a dungeon builds new floors.
 **Merlin in the dungeons:** he speaks through the Speaking Stone in the big moments: boss encounters, the anchors and the lore tablets.
 
 ## Growing stronger
-The dungeon seals only yield to the strong: the Goblin Dungeon needs **level 3**, the Berserkers **level 7** and the Lich King **level 12**. Himmel trains in the six **mini dungeons**, hunts the packs of the **Deep Forest**, burns **monster lairs**, and answers **world events** (a roaming champion, a caravan under attack). Merlin (talk to him in the plaza) suggests a cave that suits Himmel's level. Exploring the overworld gives only a little XP; the caves and dungeons are where Himmel really grows.
+The dungeon seals only yield to the strong: the Goblin Dungeon needs **level 5** (it suits levels 5-10), the Berserkers **level 15** (15-20) and the Lich King **level 20** (20-30; the level cap is 30). Himmel trains in the six **mini dungeons**, hunts the packs of the **Deep Forest**, burns **monster lairs**, and answers **world events** (a roaming champion, a caravan under attack). Merlin (talk to him in the plaza) suggests a cave that suits Himmel's level. Exploring the overworld gives only a little XP; the caves and dungeons are where Himmel really grows.
 
 ## Night raids
 The anchors' creatures come every night. A raid plays out if Himmel is near Oakwood at nightfall (if he's away, the village watch holds):
@@ -70,8 +70,8 @@ The main quest, *Beyond the Veil*, follows the route above. The villagers also h
 | The Barrowlands | North | Gravestones, the Shrine of Frost, the Lich King Dungeon |
 | Thornwood | South of Oakwood, above the river | Mossy Burrow, Thornwood Den, wolf packs, the Goblin Camp |
 | Silverrun River | Across the south | Crossed only at the Silverrun Bridge and the Old Ford Bridge |
-| Millbrook & the Southfields | Across the river | A farming hamlet, the Old Watchtower, the Sunken Crypt, bandits and boars |
-| The Deep Forest | Far east | Packs of stalkers and wraiths, lairs, the Ashen Pit and Bone Hollow |
+| Millbrook & the Southfields | Across the river | A farming hamlet, the Old Watchtower, the Sunken Crypt, orc warbands and treants |
+| The Deep Forest | Far east | Packs of the Lich's skeletons, lairs, the Ashen Pit and Bone Hollow |
 
 ## Oakwood Village
 | Character | Role |
@@ -110,7 +110,7 @@ python run_map.py
 - H / P: potion.
 - E / Enter: talk, open, read, enter portals.
 - Tab / L: journal.
-- Q: previous floor (on a first floor, back to Oakwood).
+- Q at a lit checkpoint: leave the dungeon (back to Oakwood). Otherwise a dungeon is left by finishing it.
 - R: retry.
 - M: minimap.
 - Esc: pause.

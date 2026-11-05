@@ -21,9 +21,11 @@ HOW_TO_ADD_A_BOSS.md. Only the two lines marked ADD HERE change in this file.
 """
 from .base_boss import Boss
 from .lich_king import LichKing            # ADD HERE (1/2): import your boss
+from .minotaur import Minotaur
 
 BOSSES = {
     "lich_king": LichKing,
+    "minotaur": Minotaur,
     # ADD HERE (2/2): "dragon": Dragon,
 }
 

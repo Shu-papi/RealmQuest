@@ -1,0 +1,2 @@
+pygame-ce==2.5.8
+pyinstaller>=6.0   # only to build the .exe (build_exe.bat)

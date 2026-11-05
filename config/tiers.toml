@@ -1,0 +1,32 @@
+# ==========================================================================
+#  RealmQuest  -  DIFFICULTY TIERS
+#  Health / damage / speed multipliers. Every monster spawned with tier="..." uses one.
+#  You can add your own, e.g. [nightmare]
+#
+#  Change a number and save (no restart). Delete a line and the game uses its built-in default.
+#  A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the player loses.
+# ==========================================================================
+
+[normal]   # Everyday monsters of the open world.
+hp_scale = 1.0                            # Health multiplier.
+damage_scale = 1.0                        # Damage multiplier.
+speed_scale = 1.0                         # Speed multiplier.
+
+
+[veteran]   # A mid-game crypt.
+hp_scale = 1.6                            # Health multiplier.
+damage_scale = 1.15                       # Damage multiplier.
+speed_scale = 1.05                        # Speed multiplier.
+
+
+[elite]   # Mini-boss guards.
+hp_scale = 2.5                            # Health multiplier.
+damage_scale = 1.25                       # Damage multiplier.
+speed_scale = 1.1                         # Speed multiplier.
+
+
+[undying]   # The Lich King's army.
+hp_scale = 3.0                            # Health multiplier.
+damage_scale = 1.95                       # Damage multiplier.
+speed_scale = 1.15                        # Speed multiplier.

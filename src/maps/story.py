@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pygame
 
 # ---------------------------------------------------------------------------
@@ -22,7 +24,31 @@ import pygame
 #   still out there), and what Merlin is not telling Himmel about his past.
 # ---------------------------------------------------------------------------
 
-HERO = "Himmel"
+HERO = "Himmel"            # the hero's speaker id in the story data; the player's chosen
+                           # name is swapped in when lines are shown (see named())
+_hero_name = HERO
+
+
+def set_hero_name(name):
+    """The name the player chose; every dialog, toast and banner shows it instead of Himmel."""
+    global _hero_name
+    _hero_name = (name.strip() or HERO) if isinstance(name, str) else HERO
+
+
+def hero_name():
+    return _hero_name
+
+
+def named(text):
+    """`text` with the default hero name replaced by the player's chosen name."""
+    if not isinstance(text, str) or _hero_name == HERO:
+        return text
+    if HERO in _hero_name and _hero_name in text:      # already swapped (name like "Himmel Jr")
+        return text
+    return re.sub(r"\b%s\b" % HERO, lambda _m: _hero_name, text)
+
+
+
 MERLIN = "Merlin"
 MERLIN_STONE = "Merlin (Speaking Stone)"   # Merlin's voice when he isn't there in person
 MAREN = "Elder Maren"
@@ -401,6 +427,7 @@ class Dialog:
 
     def __init__(self, lines=INTRO_LINES, portraits=None, cps=48.0):
         self.lines = [(HERO, ln) if isinstance(ln, str) else tuple(ln) for ln in lines]
+        self.lines = [(who, named(text)) for who, text in self.lines]      # the player's chosen name
         self.cps = cps
         self.idx = 0
         self.shown = 0.0
@@ -482,7 +509,7 @@ class Dialog:
             tx = frame.right + 28
 
         col = NAME_COLORS.get(speaker, ENEMY_NAME_COLOR)
-        surf.blit(self.name_font.render(speaker, True, col), (tx, box.y + 18))
+        surf.blit(self.name_font.render(named(speaker), True, col), (tx, box.y + 18))
 
         # wrap the full line first so words don't jump while typing, then cut by chars
         full = self.wrap(line, box.right - tx - 28)

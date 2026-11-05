@@ -40,10 +40,16 @@ SUMMON_WEIGHT = {"skeleton_warrior": 5.0, "skeleton_archer": 3.0, "skeleton_acol
 SUMMON_LIMIT = {"skeleton_warrior": 6, "skeleton_archer": 3, "skeleton_acolyte": 2, "skeleton_brute": 2}
 
 
-# config/balance.toml:  [boss.summons] tier = "..."   and   [boss.summons.<monster>] cost / weight / limit
+# config/bosses/lich_king.toml:  [summons] tier = "..."   and   [summons.<monster>] cost / weight / limit
 _tier = {"minion_tier": MINION_TIER}
 balance.apply_summons(MINION_COST, SUMMON_WEIGHT, SUMMON_LIMIT, _tier)
 MINION_TIER = _tier["minion_tier"]
+
+
+@balance.on_reload
+def _after_reload():
+    global MINION_TIER
+    MINION_TIER = _tier["minion_tier"]
 
 
 def minion_load(minions):

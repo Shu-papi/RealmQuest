@@ -19,21 +19,33 @@ Hooking into your real dungeon scene
     return True if the dungeon was CLEARED (this unlocks the next ones).
 """
 import math
+import os
 import random
+import sys
 import pygame
+
+# src/ on the import path: the hero is the team's merged Knight / Mage / Elf Archer
+_SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+from characters.hero_sprites import HeroSprite, HEIGHT as HERO_H     # noqa: E402
 
 try:
     from . import village
     from . import world_lore
     from . import minis
     from . import wilds as wilds_mod
+    from . import story
     from .save_state import level_progress
+    from .dash_fx import DashTrail
 except ImportError:
     import village
     import world_lore
     import minis
     import wilds as wilds_mod
+    import story
     from save_state import level_progress
+    from dash_fx import DashTrail
 
 # --------------------------------------------------------------------------- #
 #  CONFIG - tweak freely
@@ -47,12 +59,12 @@ INTERACT_DIST = 95
 # "requires" = id of the dungeon that must be cleared first (None = always open).
 # Strict chain, matching the story: Goblin -> Berserker -> Lich King.
 DUNGEONS = [
-    dict(id="goblin", name="Goblin Dungeon", level="Requires Lv 3",
-         pos=(780, 1030), color=(70, 235, 120), requires=None, min_level=3),
-    dict(id="berserker", name="Berserker Warriors Dungeon", level="Requires Lv 7",
-         pos=(2060, 930), color=(255, 85, 55), requires="goblin", min_level=7),
-    dict(id="lich", name="Lich King Dungeon", level="Requires Lv 12",
-         pos=(1400, 330), color=(175, 95, 255), requires="berserker", min_level=12),
+    dict(id="goblin", name="Goblin Dungeon", level="Lv 5-10",
+         pos=(780, 1030), color=(70, 235, 120), requires=None, min_level=5),
+    dict(id="berserker", name="Berserker Warriors Dungeon", level="Lv 15-20",
+         pos=(2060, 930), color=(255, 85, 55), requires="goblin", min_level=15),
+    dict(id="lich", name="Lich King Dungeon", level="Lv 20-30",
+         pos=(1400, 330), color=(175, 95, 255), requires="berserker", min_level=20),
 ]
 MINIS = minis.MINIS                     # the six replayable mini dungeons
 DUNGEON_BY_ID = {d["id"]: d for d in DUNGEONS + MINIS}
@@ -641,35 +653,66 @@ class Cave(Portal):
             pygame.draw.circle(scr, scale_col(self.color, f), (int(x - cx), int(y - cy) - 30), 2)
 
 
+DASH_SPEED = 640          # overworld dash (the world is drawn at 0.9x, so this matches the dungeon)
+
+
 class Player:
-    def __init__(self, x, y):
+    def __init__(self, x, y, look="hero_warrior"):
         self.x, self.y = float(x), float(y)
         self.facing = "up"
         self.flip = False
         self.walk = 0.0
         self.moving = False
-        self.frames = village.make_npc_frames(village.LOOKS["hero"])   # same art style as the villagers
+        self.face = (0.0, -1.0)              # last direction moved (dash / skills aim this way)
+        self.dash_t = 0.0                    # > 0 while dashing
+        self.dash_dir = (0.0, 1.0)
+        self.speed_k = 1.0                   # class walk speed (Archer is the quickest)
+        self.blink = False                   # set by the Game while invulnerable after a hit
+        self.dead = False                    # set by the Game: the hero has fallen
+        self.on_step = None                  # on_step(): a footstep (the Game plays a sound)
+        self.step_t = 0.0
+        self.set_look(look)
         self.sort_y = y
         self.rect = pygame.Rect(0, 0, 36, 48)
+        self.trail = DashTrail()             # afterimages and speed lines while dashing (dash_fx.py)
+        self.root_t = 0.0                    # held by a treant's roots (no walking, no dashing)
+        self.slow_t = 0.0                    # half speed
+
+    def afflict(self, name, seconds):
+        """A monster's status effect: 'root' or 'slow' for `seconds` (same as the dungeon Player)."""
+        if name == "root":
+            self.root_t = max(self.root_t, seconds)
+            self.dash_t = 0.0
+        elif name == "slow":
+            self.slow_t = max(self.slow_t, seconds)
+
+    def set_look(self, look):
+        """The hero's class look (hero_warrior / hero_mage / hero_archer): the team's
+        Knight, Kendi the Mage or the Elf Archer (src/characters/hero_sprites.py)."""
+        self.look = look
+        self.sprite = HeroSprite(look)
+
+    def act(self, kind="attack", duration=None):
+        """Play the attack / special animation (the Game calls this on swings and skills)."""
+        self.sprite.act(kind, duration)
 
     def feet(self):
         return pygame.Rect(int(self.x) - 9, int(self.y) - 9, 18, 9)
 
     def draw(self, scr, cx, cy, t):
-        step = 0
-        if self.moving:
-            step = 1 if int(self.walk * 6) % 2 == 0 else 2
-        img = self.frames[(self.facing, step)]
-        if self.facing == "side" and self.flip:
-            img = pygame.transform.flip(img, True, False)
+        if self.blink:
+            self.sort_y = self.y
+            return
         X, Y = int(self.x - cx), int(self.y - cy)
         sh = pygame.Surface((30, 12), pygame.SRCALPHA)
         pygame.draw.ellipse(sh, (0, 0, 0, 90), (0, 0, 30, 12))
         scr.blit(sh, (X - 15, Y - 8))
-        bob = -1 if (self.moving and step) else 0
-        w, h = img.get_size()
-        scr.blit(img, (X - w // 2, Y - h + 4 + bob))
-        self.rect.topleft = (int(self.x) - w // 2, int(self.y) - h + 4)
+        self.trail.draw(scr, self.sprite, self.x, self.y, self.flip, self.dash_t > 0, cx, cy, self.dash_dir)
+        # the art faces left / right only: walking up or down keeps the last side
+        self.sprite.set_dead(self.dead)
+        self.sprite.draw(scr, X, Y + 2, moving=self.moving and not self.dead, left=self.flip)
+        self.rect.topleft = (int(self.x) - 18, int(self.y) - HERO_H + 4)
+        self.rect.size = (36, HERO_H)
         self.sort_y = self.y
 
     def lights(self, t):
@@ -681,8 +724,10 @@ class Player:
 # --------------------------------------------------------------------------- #
 class SurfaceWorld:
     def __init__(self, screen, on_enter_dungeon=None, progress=None, save=None, on_talk=None,
-                 on_landmark=None, quest_info=None):
+                 on_landmark=None, quest_info=None, on_loading=None):
         self.screen = screen
+        self.on_loading = on_loading      # on_loading(): show a loading card in the real window
+        self.cam_shake = (0, 0)           # camera shake from the Game (juice.offset())
         self.on_enter = on_enter_dungeon
         self.progress = progress or Progress()
         self.save = save                  # shared SaveState (gold, flags); None when run standalone
@@ -721,6 +766,9 @@ class SurfaceWorld:
 
     # ------------------------------------------------------------------ build
     def _loading(self):
+        if self.on_loading is not None:
+            self.on_loading()
+            return
         self.screen.fill((10, 16, 12))
         img = self.f_title.render("Loading Oakwood Vale...", True, (200, 230, 190))
         self.screen.blit(img, img.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2)))
@@ -1384,7 +1432,7 @@ class SurfaceWorld:
 
     # ------------------------------------------------------------- gameplay
     def toast(self, text, color=(240, 230, 200)):
-        self.toasts = self.toasts[-2:] + [[text, color, 4.0]]
+        self.toasts = self.toasts[-2:] + [[story.named(text), color, 4.0]]
 
     # shared state (SaveState when running inside the game, local otherwise)
     def stage(self):
@@ -1478,16 +1526,36 @@ class SurfaceWorld:
         p = self.player
         dx = (keys[pygame.K_d] or keys[pygame.K_RIGHT]) - (keys[pygame.K_a] or keys[pygame.K_LEFT])
         dy = (keys[pygame.K_s] or keys[pygame.K_DOWN]) - (keys[pygame.K_w] or keys[pygame.K_UP])
+        if getattr(self, "frozen", False):        # the hero has fallen: no walking
+            dx = dy = 0
+        speed = PLAYER_SPEED * p.speed_k
+        p.root_t = max(0.0, p.root_t - dt)
+        p.slow_t = max(0.0, p.slow_t - dt)
+        if p.slow_t > 0:
+            speed *= 0.5
+        if p.root_t > 0:                          # held by roots: the keys and a dash do nothing
+            dx = dy = 0
+            p.dash_t = 0.0
+        if p.dash_t > 0:                          # a dash overrides the keys for a moment
+            p.dash_t = max(0.0, p.dash_t - dt)
+            dx, dy = p.dash_dir
+            speed = DASH_SPEED
         p.moving = bool(dx or dy)
         if not p.moving:
             return
         n = math.hypot(dx, dy)
-        vx, vy = dx / n * PLAYER_SPEED * dt, dy / n * PLAYER_SPEED * dt
+        p.face = (dx / n, dy / n)
+        vx, vy = dx / n * speed * dt, dy / n * speed * dt
         if abs(dx) >= abs(dy) and dx:
             p.facing, p.flip = "side", dx < 0
         elif dy:
             p.facing = "down" if dy > 0 else "up"
         p.walk += dt
+        p.step_t += dt
+        if p.step_t >= 0.32 and p.dash_t <= 0:
+            p.step_t = 0.0
+            if p.on_step:
+                p.on_step()
         dyn = self.dyn_colliders
         p.x += vx
         if p.feet().collidelist(self.colliders) != -1 or p.feet().collidelist(dyn) != -1:
@@ -1684,8 +1752,9 @@ class SurfaceWorld:
 
     def camera(self):
         pl = self.player
-        return (int(max(0, min(WORLD_W - SCREEN_W, pl.x - SCREEN_W / 2))),
-                int(max(0, min(WORLD_H - SCREEN_H, pl.y - SCREEN_H / 2 - 20))))
+        sx, sy = self.cam_shake
+        return (int(max(0, min(WORLD_W - SCREEN_W, pl.x - SCREEN_W / 2))) + sx,
+                int(max(0, min(WORLD_H - SCREEN_H, pl.y - SCREEN_H / 2 - 20))) + sy)
 
     def draw(self):
         scr, t, pl = self.screen, self.t, self.player
@@ -1744,6 +1813,9 @@ class SurfaceWorld:
         scr.blit(self.vignette, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
         if raid is not None:
             raid.draw_glow(scr, camx, camy, t)
+        fx_hook = getattr(self, "draw_fx_hook", None)      # the hero's skills (set by the Game)
+        if fx_hook is not None:
+            fx_hook(scr, camx, camy, t)
         # coloured portal haze
         for p in self.portals:
             if not p.locked and view.collidepoint(p.x, p.y):
@@ -1842,6 +1914,18 @@ class SurfaceWorld:
 
     def draw_hud(self, camx, camy):
         scr = self.screen
+        hero_hud = getattr(self, "hero_hud_hook", None)     # the Game's hero panel (bars + skills)
+        if hero_hud is not None:
+            top = hero_hud(scr)
+            pygame.draw.circle(scr, (90, 60, 10), (36, top + 17), 10)
+            pygame.draw.circle(scr, (240, 196, 70), (36, top + 16), 8)
+            pygame.draw.circle(scr, (255, 236, 150), (34, top + 14), 3)
+            self.text(scr, "%d gold" % self.gold, self.f_hud, (255, 226, 130), (54, top + 2))
+            info = self.quest_info() if self.quest_info else None
+            if info:
+                self.draw_tracker(info, top + 34)
+            self._draw_hud_rest(camx, camy)
+            return
         # HP
         pygame.draw.rect(scr, (60, 18, 22), (24, 22, 364, 26))
         pygame.draw.rect(scr, (218, 52, 62), (24, 22, int(364 * self.hp / self.max_hp), 26))
@@ -1866,6 +1950,10 @@ class SurfaceWorld:
         else:
             s, col = self.objective()
             self.text(scr, s, self.f_label, col, (700, 22), "midtop")
+        self._draw_hud_rest(camx, camy)
+
+    def _draw_hud_rest(self, camx, camy):
+        scr = self.screen
         # region name when you walk into a new area
         if self.region_t > 0 and self.intro <= 0:
             a = min(1.0, self.region_t / 0.6, (3.2 - self.region_t) / 0.4)
@@ -1910,14 +1998,10 @@ class SurfaceWorld:
         # minimap
         if self.show_map:
             self.draw_minimap(camx, camy)
-        # bottom hint bar
-        bar = pygame.Surface((SCREEN_W, 34), pygame.SRCALPHA)
-        bar.fill((6, 10, 10, 200))
-        scr.blit(bar, (0, SCREEN_H - 34))
-        self.text(scr, "WASD: move  |  Space: sword  |  E: talk / use  |  Tab: journal  |  H: potion  |  M: map  |  ESC: pause",
-                  self.f_small, (235, 235, 225), (SCREEN_W // 2, SCREEN_H - 17), "center")
+        # (no keybind bar at the bottom: the controls are listed in README.txt)
 
     def _wrap(self, text, font, width):
+        text = story.named(text)
         out, cur = [], ""
         for w in text.split(" "):
             test = (cur + " " + w).strip()
@@ -1929,13 +2013,13 @@ class SurfaceWorld:
         out.append(cur)
         return out
 
-    def draw_tracker(self, info):
+    def draw_tracker(self, info, top=122):
         """Quest tracker under the gold counter: main quest step + side quests in progress."""
-        key = (info.get("main"), tuple(info.get("side", ())))
+        key = (info.get("main"), tuple(info.get("side", ())), story.hero_name())
         if getattr(self, "_tracker_key", None) != key:
             self._tracker_key, self._tracker_img = key, self._build_tracker(info)
         if self._tracker_img:
-            self.screen.blit(self._tracker_img, (16, 122))
+            self.screen.blit(self._tracker_img, (16, top))
 
     def _build_tracker(self, info):
         rows = []                                  # (text, font, colour, indent)

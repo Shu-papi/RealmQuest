@@ -80,13 +80,22 @@ class Monster:
     START_STATE = "chase"
     INVULNERABLE_STATES = ("spawn", "dying", "dead")
 
+    # reach / size numbers that grow with `size` (a bigger monster reaches further); only those a class has
+    SIZED = ("FOOT", "ATTACK_RANGE", "SLASH_RANGE", "SWIPE_RANGE", "SLAM_RADIUS", "SLAM_REACH", "SWIPE_REACH")
+
     def __init__(self, x, y, variant="bone", seed=None, spawn=True,
-                 hp_scale=1.0, damage_scale=1.0, loot=None, speed_scale=1.0):
+                 hp_scale=1.0, damage_scale=1.0, loot=None, speed_scale=1.0, size=1.0):
         if variant not in VARIANTS:
             raise ValueError(f"Unknown variant '{variant}'. Choose from: {list(VARIANTS)}")
         self.x = float(x)
         self.y = float(y)
-        self.radius = self.RADIUS
+        self.size = float(size)           # 1.0 = normal; bigger draws the art larger (mini-bosses)
+        if self.size != 1.0:
+            for name in self.SIZED:
+                if hasattr(type(self), name):
+                    setattr(self, name, getattr(type(self), name) * self.size)
+        self.scales = (hp_scale, damage_scale, speed_scale)   # kept for refresh_config()
+        self.radius = self.RADIUS * self.size if self.size != 1.0 else self.RADIUS
         self.max_hp = max(1, int(round(self.MAX_HP * hp_scale)))
         self.hp = self.max_hp
         self.speed = self.SPEED * speed_scale
@@ -119,7 +128,7 @@ class Monster:
         self.rings = []               # expanding shockwaves: [x, y, radius, max_radius, life, max_life]
         self.chunks = []
         self._loot = []
-        self.sheet = get_sheet(self.NAME, variant)
+        self.sheet = get_sheet(self.NAME, variant, self.size)
         if spawn:
             self._spawn_burst()
 
@@ -144,6 +153,23 @@ class Monster:
     @property
     def invulnerable(self):
         return self.state in self.INVULNERABLE_STATES
+
+    def refresh_config(self):
+        """The config files changed while it is alive: read MAX_HP / SPEED / DAMAGE / RADIUS (and the
+        reach numbers that grow with size) again, keeping the same share of health left."""
+        if self.hp <= 0:
+            return
+        hp_scale, damage_scale, speed_scale = self.scales
+        if self.size != 1.0:
+            for name in self.SIZED:
+                if hasattr(type(self), name):
+                    setattr(self, name, getattr(type(self), name) * self.size)
+        share = self.hp / self.max_hp if self.max_hp else 1.0
+        self.max_hp = max(1, int(round(self.MAX_HP * hp_scale * getattr(self, "extra_hp", 1.0))))
+        self.hp = max(1, round(self.max_hp * share))
+        self.radius = self.RADIUS * self.size
+        self.speed = self.SPEED * speed_scale
+        self.damage = max(1, int(round(self.DAMAGE * damage_scale)))
 
     @property
     def foot_y(self):

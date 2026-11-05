@@ -36,6 +36,7 @@ from . import theme
 from .assets import get_image, get_font, nine_slice
 from .text import draw_text
 
+CONTINUE = "continue"
 NEW_GAME = "new_game"
 SETTINGS = "settings"
 EXIT = "exit"
@@ -48,6 +49,7 @@ DEFAULT_BUTTONS = [
 ]
 
 TITLE = "REALMQUEST"
+SUBTITLE = "BEYOND THE VEIL"
 SIGN_POS = (84, 58)                # top-left of title_sign.png (the sword pokes over the frame)
 SIGN_TEXT_CENTER = (190, 137)      # middle of the wooden board, inside title_sign.png
 
@@ -63,10 +65,17 @@ ICON_SIZE = 32
 
 
 class MainMenu:
-    def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H, buttons=None):
+    def __init__(self, width=theme.SCREEN_W, height=theme.SCREEN_H, buttons=None, subtitle=SUBTITLE,
+                 info=None, heroes=None):
+        self.heroes = list(heroes or [])                    # animated heroes (HeroSprite); else hero.png
         self.width = width
         self.height = height
         self.buttons = list(buttons or DEFAULT_BUTTONS)     # [(label, action, icon), ...]
+        self.subtitle = subtitle                            # small line under the title
+        self.info = info                                    # e.g. the saved game, shown by CONTINUE
+        # four buttons (with CONTINUE) are a little shorter so they fit under the sign
+        self.button_h = BUTTON_H if len(self.buttons) <= 3 else 48
+        self.button_gap = BUTTON_GAP if len(self.buttons) <= 3 else 8
         self.selected = 0
         self.time = 0.0
         self._button_images = None                          # made once, on first draw
@@ -84,7 +93,7 @@ class MainMenu:
 
     def button_rects(self):
         """Where each button is on screen, as (x, y, w, h)."""
-        return [(BUTTONS_LEFT, BUTTONS_TOP + i * (BUTTON_H + BUTTON_GAP), BUTTON_W, BUTTON_H)
+        return [(BUTTONS_LEFT, BUTTONS_TOP + i * (self.button_h + self.button_gap), BUTTON_W, self.button_h)
                 for i in range(len(self.buttons))]
 
     def button_at(self, pos):
@@ -129,8 +138,18 @@ class MainMenu:
         for index, rect in enumerate(self.button_rects()):
             label, _, icon = self.buttons[index]
             self._draw_button(surface, rect, label, icon, index == self.selected)
-        draw_text(surface, "Enter to select",
-                  get_font(theme.FONT_SMALL), theme.TEXT, HINT_POS, outline=1)
+        last = self.button_rects()[-1]
+        hint_y = max(HINT_POS[1], last[1] + last[3] + 6)
+        if hint_y > 530:                                       # no room under the buttons
+            draw_text(surface, "Enter to select", get_font(theme.FONT_SMALL), theme.TEXT,
+                      (BUTTONS_LEFT + BUTTON_W + 18, last[1] + last[3] // 2 - 8), outline=1)
+        else:
+            draw_text(surface, "Enter to select", get_font(theme.FONT_SMALL), theme.TEXT,
+                      (HINT_POS[0], hint_y), outline=1)
+        if self.info and self.buttons and self.buttons[self.selected][1] == CONTINUE:
+            r = self.button_rects()[self.selected]
+            draw_text(surface, self.info, get_font(theme.FONT_SMALL), theme.TITLE,
+                      (r[0] + r[2] + 18, r[1] + r[3] // 2 - 8), outline=1)
 
     def _draw_background(self, surface):
         picture = get_image("menu_bg.png")
@@ -141,13 +160,33 @@ class MainMenu:
         else:
             self._draw_fallback_scene(surface)
 
+    HERO_TURN = 4.0          # s each hero stands there when they take turns
+
     def _draw_hero(self, surface):
+        if self.heroes:
+            self._draw_animated_hero(surface)
+            return
         hero = get_image("hero.png")
         if hero is None:
             return
         bob = 1 if math.sin(self.time * 2.5) > 0 else 0          # gentle breathing
         fx, fy = HERO_FEET
         surface.blit(hero, (fx - hero.get_width() // 2, fy - hero.get_height() - bob))
+
+    def _draw_animated_hero(self, surface):
+        """The saved hero (or the three heroes taking turns), facing the buttons."""
+        n = len(self.heroes)
+        i = int(self.time / self.HERO_TURN) % n
+        fx, fy = HERO_FEET
+        if n == 1:
+            self.heroes[0].draw(surface, fx, fy, left=True)
+            return
+        into = self.time % self.HERO_TURN                  # fade between heroes
+        alpha = min(1.0, into / 0.3, (self.HERO_TURN - into) / 0.3)
+        layer = pygame.Surface((360, 300), pygame.SRCALPHA)
+        self.heroes[i].draw(layer, 180, 290, left=True)
+        layer.set_alpha(int(255 * max(0.0, alpha)))
+        surface.blit(layer, (fx - 180, fy - 290))
 
     def _draw_frame(self, surface):
         frame = get_image("screen_frame.png")
@@ -190,8 +229,11 @@ class MainMenu:
         if sign is not None:
             surface.blit(sign, (sx, sy))
         cx, cy = SIGN_TEXT_CENTER
-        draw_text(surface, TITLE, get_font(theme.FONT_TITLE), theme.TITLE, (sx + cx, sy + cy),
+        draw_text(surface, TITLE, get_font(theme.FONT_TITLE), theme.TITLE, (sx + cx, sy + cy - 8),
                   outline=3, outline_color=theme.TITLE_SHADOW, center=True)
+        if self.subtitle:
+            draw_text(surface, self.subtitle, get_font(theme.FONT_SMALL), theme.TORCH_LIGHT,
+                      (sx + cx, sy + cy + 34), outline=2, outline_color=theme.TITLE_SHADOW, center=True)
 
     def _get_button_images(self):
         """Stretch button.png / button_selected.png to the button size once, then reuse."""
@@ -199,8 +241,8 @@ class MainMenu:
             normal, selected = get_image("button.png"), get_image("button_selected.png")
             if normal is not None and selected is not None:
                 self._button_images = (
-                    nine_slice(normal, BUTTON_W, BUTTON_H, BUTTON_BORDER),
-                    nine_slice(selected, BUTTON_W, BUTTON_H, BUTTON_BORDER),
+                    nine_slice(normal, BUTTON_W, self.button_h, BUTTON_BORDER),
+                    nine_slice(selected, BUTTON_W, self.button_h, BUTTON_BORDER),
                 )
             else:
                 self._button_images = False                    # remember: no pictures

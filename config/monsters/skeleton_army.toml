@@ -1,0 +1,23 @@
+# ============================================================================================================
+#  RealmQuest  -  THE SKELETON ARMY (outside the boss room)
+#  How the Lich King's skeletons fill the Lich King Dungeon rooms and the north-road raid. Each skeleton's
+#  own stats: skeleton_<kind>.toml.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+room_tier = "veteran"                     # Tier (config/tiers.toml) of the skeletons in dungeon rooms.
+room_hp_power = 1.0                       # A sword hit of 2 does 2 x this to a skeleton in a room (bigger = they die faster).
+room_damage_k = 1.0                       # Every skeleton hit on the hero in a room is multiplied by this.
+raid_tier = "normal"                      # Tier of the skeletons in the north-road night raid.
+raid_hp_power = 1.0                       # Same as room_hp_power, for the raid.
+raid_damage_k = 1.0                       # Same as room_damage_k, for the raid.
+warrior_weight = 3.0                      # How often a room rolls a skeleton warrior (higher = more often).
+archer_weight = 2.0                       # ...a skeleton archer.
+acolyte_weight = 1.0                      # ...a skeleton acolyte.
+brute_weight = 1.0                        # ...a bone brute.
+max_acolytes = 1                          # Most acolytes in one room.
+max_brutes = 1                            # Most bone brutes in one room.
+brute_hp_trim = 0.45                      # A bone brute's health x this (its arena health is four warriors' worth).

@@ -16,11 +16,11 @@ from __future__ import annotations
 try:
     from . import story
     from .shop import CATALOG
-    from .combat import POTION_MAX
+    from . import combat as _combat
 except ImportError:
     import story
     from shop import CATALOG
-    from combat import POTION_MAX
+    import combat as _combat
 
 H = story.HERO
 MAREN, TORVIN, WREN, PIP = story.MAREN, story.TORVIN, story.WREN, story.PIP
@@ -266,7 +266,7 @@ class QuestBook:
             s.gold += r["gold"]
             parts.append("+%d gold" % r["gold"])
         if r.get("potions"):
-            got = min(r["potions"], POTION_MAX - s.potions)
+            got = min(r["potions"], _combat.POTION_MAX - s.potions)
             if got > 0:
                 s.potions += got
                 parts.append("+%d potion%s" % (got, "s" if got > 1 else ""))

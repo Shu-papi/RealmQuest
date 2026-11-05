@@ -5,3 +5,13 @@ venv/
 .env
 # the game writes the player's progress here
 savegame.json
+# tester mode (python run_map.py --tester) plays on its own save
+savegame_tester.json
+# screenshots from `python src/monsters/mobs.py --test`
+test_output/
+
+# the .exe build (build_exe.bat)
+build/
+dist/
+smoke.log
+crash.log

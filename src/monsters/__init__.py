@@ -20,6 +20,14 @@ RealmQuest monster package (real-time, Pygame).
 
 Every monster lives in a folder or file here and has its art in assets/monsters/<name>/.
 To add one, see HOW_TO_ADD_A_MONSTER.md. Only the two lines marked ADD HERE change in this file.
+
+The goblin-dungeon mobs live here too (they plug into src/maps/combat.py, not MONSTERS):
+    mobs.py             Red / Blue / Green Slime, Wild Boar, Goblin Shaman (assets/monsters/mobs/)
+    monsters_config.py  Goblin General, Giant Boar, slimes: sheet layout + starter stats
+                        (assets/monsters/goblin_army/)
+    monster_viewer.py   animated preview of the goblin_army sheets
+    make_monsters.py    regenerates the goblin_army sheets with Pillow
+    game_sprites.py     puts these sprites on the game's enemies (enemy.skin = "slime_red", ...)
 """
 try:
     import balance                                                          # src/ is on sys.path
@@ -50,7 +58,7 @@ TIERS = {
     "undying": {"hp_scale": 3.0, "damage_scale": 1.3,  "speed_scale": 1.15},
 }
 
-# config/balance.toml overrides everything above: [monsters.<name>] and [tiers.<name>] (see src/balance.py)
+# config/monsters/<name>.toml and config/tiers.toml override everything above (see src/balance.py)
 balance.apply_monsters(MONSTERS, TIERS)
 
 

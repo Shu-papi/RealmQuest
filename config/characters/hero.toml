@@ -1,0 +1,22 @@
+# ============================================================================================================
+#  RealmQuest  -  THE HERO (every class)
+#  Numbers every class shares. Each class's own numbers are in warrior.toml, mage.toml and archer.toml.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+sword_damage = 24                         # Base damage of every basic attack (a class's dmg_bonus and gear add to it).
+sword_reach = 90                          # How far the melee swing reaches (pixels).
+heal_on_room_clear = 8                    # Health back when a room is cleared.
+potion_heal = 12                          # Health a potion gives back (Mending Herbs add to it).
+potion_max = 6                            # Most potions the hero can carry.
+potion_start = 2                          # Potions a new hero starts with.
+dash_time = 0.18                          # Seconds a dash lasts.
+dash_speed = 520.0                        # Dash speed (pixels per second).
+dash_cooldown = 0.9                       # Seconds between dashes (Windstep Boots shorten it).
+dash_invulnerable = 0.3                   # Seconds the hero can't be hurt at the start of a dash.
+dash_stamina = 25                         # Stamina one dash costs.
+dash_effect = true                        # true = afterimages and speed lines while dashing, false = off.
+xp_per_health = 0.04                      # Kill XP = the monster's max health x this (x its tier; elites x2, bosses x3).

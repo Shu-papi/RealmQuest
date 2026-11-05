@@ -21,7 +21,7 @@ except ImportError:
 
 import ui.assets as assets
 from ui.settings_data import Settings, KEY_ACTIONS
-from ui.settings_screen import SettingsScreen, BACK, VIDEO_CHANGED, RESET_ROW
+from ui.settings_screen import SettingsScreen, BACK, VIDEO_CHANGED, APPLIED, RESET_ROW
 
 
 class TempFileTest(unittest.TestCase):
@@ -99,22 +99,53 @@ class TestSettingsScreen(TempFileTest):
     def test_left_right_changes_volume(self):
         self.ui.move(+1)                       # Music
         self.ui.adjust(-1)
-        self.assertEqual(self.settings.music_volume, 65)
+        self.assertEqual(self.ui.settings.music_volume, 65)
         self.ui.adjust(+1)
         self.ui.adjust(+1)
-        self.assertEqual(self.settings.music_volume, 75)
+        self.assertEqual(self.ui.settings.music_volume, 75)
+        self.assertEqual(self.settings.music_volume, 70, "not applied yet")
 
-    def test_fullscreen_toggle_reports_video_changed(self):
+    def test_display_mode_cycles_and_apply_reports_video_changed(self):
         self.ui.switch_tab(index=1)
-        self.assertEqual(self.ui.adjust(-1), VIDEO_CHANGED)     # left = ON
+        seen = []
+        for _ in range(4):
+            self.assertIsNone(self.ui.adjust(+1), "nothing happens before Apply")
+            seen.append(self.ui.settings.display_mode)
+        self.assertEqual(seen, ["borderless", "borderless_fullscreen", "fullscreen", "windowed"])
+        self.ui.adjust(-1)
+        self.assertFalse(self.settings.fullscreen)
+        self.assertEqual(self.ui.apply(), VIDEO_CHANGED)
         self.assertTrue(self.settings.fullscreen)
-        self.assertIsNone(self.ui.adjust(-1))                    # already on: nothing changes
+
+    def test_resolution_and_fps_limit(self):
+        self.ui.switch_tab(index=1)
+        self.ui.move(+1)                                          # Resolution
+        self.ui.adjust(+1)
+        self.assertEqual(self.ui.settings.resolution, (1280, 720))
+        self.assertEqual(self.ui.apply(), VIDEO_CHANGED)
+        self.assertEqual(self.settings.resolution, (1280, 720))
+        self.ui.move(+2)                                          # FPS Limit: no new window needed
+        self.ui.adjust(+1)
+        self.assertEqual(self.ui.apply(), APPLIED)
+        self.assertEqual(self.settings.fps_cap, 120)
+
+    def test_video_settings_are_saved(self):
+        self.settings.display_mode, self.settings.resolution = "borderless", (1600, 900)
+        self.settings.vsync, self.settings.fps_cap = True, 0
+        self.settings.save(self.path)
+        loaded = Settings.load(self.path)
+        self.assertEqual((loaded.display_mode, loaded.resolution, loaded.vsync, loaded.fps_cap),
+                         ("borderless", (1600, 900), True, 0))
+
+    def test_window_never_bigger_than_the_desktop(self):
+        self.settings.resolution = (2560, 1440)
+        self.assertEqual(self.settings.window_size((1920, 1080)), (1920, 1080))
 
     def test_screen_shake_toggle(self):
         self.ui.switch_tab(index=1)
-        self.ui.move(+1)
+        self.ui.move(+5)
         self.assertIsNone(self.ui.activate())
-        self.assertFalse(self.settings.screen_shake)
+        self.assertFalse(self.ui.settings.screen_shake)
 
     def test_rebinding_a_key(self):
         self.ui.switch_tab(index=2)
@@ -123,7 +154,7 @@ class TestSettingsScreen(TempFileTest):
         self.assertTrue(self.ui.rebinding)
         self.ui.press_key_while_rebinding("l")
         self.assertFalse(self.ui.rebinding)
-        self.assertEqual(self.settings.key_for("attack"), "l")
+        self.assertEqual(self.ui.settings.key_for("attack"), "l")
 
     def test_escape_cancels_rebinding(self):
         self.ui.switch_tab(index=2)
@@ -132,21 +163,68 @@ class TestSettingsScreen(TempFileTest):
         self.assertEqual(self.settings.key_for("move_up"), "w")
 
     def test_reset_keys_row(self):
-        self.settings.rebind("attack", "l")
+        self.ui.settings.rebind("attack", "l")
         self.ui.switch_tab(index=2)
         self.ui.row = self.ui.rows().index(RESET_ROW)
         self.ui.activate()
-        self.assertEqual(self.settings.key_for("attack"), "j")
+        self.assertEqual(self.ui.settings.key_for("attack"), "j")
 
-    def test_close_saves_and_goes_back(self):
-        self.settings.sfx_volume = 10
-        self.assertEqual(self.ui.close(), BACK)
+    def test_apply_saves_the_changes(self):
+        self.ui.settings.sfx_volume = 10
+        self.assertTrue(self.ui.dirty)
+        self.assertEqual(self.ui.apply(), APPLIED)
+        self.assertEqual(self.settings.sfx_volume, 10)
         self.assertEqual(Settings.load(self.path).sfx_volume, 10)
+        self.assertFalse(self.ui.dirty)
+        self.assertIsNone(self.ui.apply(), "nothing left to apply")
+
+    def test_cancel_and_escape_forget_unapplied_changes(self):
+        self.ui.settings.sfx_volume = 10
+        self.ui.settings.display_mode = "fullscreen"
+        self.assertEqual(self.ui.cancel(), BACK)
+        self.assertEqual((self.settings.sfx_volume, self.settings.display_mode), (70, "windowed"))
+        self.assertFalse(os.path.exists(self.path), "nothing saved")
+        self.ui.settings.sfx_volume = 5
+        self.assertEqual(self.ui.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, mod=0)),
+                         BACK)
+        self.assertEqual(self.settings.sfx_volume, 70)
+
+    def test_apply_and_cancel_buttons_by_mouse_and_keyboard(self):
+        from ui.settings_screen import APPLY_RECT, CANCEL_RECT
+        self.ui.settings.music_volume = 20
+        x, y, w, h = APPLY_RECT
+        self.assertEqual(self.ui._click((x + w // 2, y + h // 2)), APPLIED)
+        self.assertEqual(self.settings.music_volume, 20)
+        self.ui.settings.music_volume = 90
+        self.ui.button, self.ui.row = None, 0   # back on the first row
+        self.ui.move(+3)                        # past the 3 volume rows: APPLY
+        self.assertEqual(self.ui.button, 0)
+        self.ui.adjust(+1)                      # -> CANCEL
+        self.assertEqual(self.ui.activate(), BACK)
+        self.assertEqual(self.settings.music_volume, 20)
+        x, y, w, h = CANCEL_RECT
+        self.assertEqual(self.ui._click((x + w // 2, y + h // 2)), BACK)
+
+    def test_window_plan_for_each_mode(self):
+        s = Settings()
+        s.resolution = (1920, 1080)
+        desktop = (1920, 1080)
+        s.display_mode = "fullscreen"
+        self.assertEqual(s.window_plan(desktop, {(1920, 1080), (1280, 720)}), ((1920, 1080), "fullscreen"))
+        s.resolution = (2560, 1440)                 # the screen can't do it: use the desktop size
+        self.assertEqual(s.window_plan(desktop, {(1920, 1080)})[0], (1920, 1080))
+        s.display_mode = "borderless_fullscreen"
+        self.assertEqual(s.window_plan(desktop)[0], (1920, 1080))
+        s.display_mode, s.resolution = "windowed", (1280, 720)
+        self.assertEqual(s.window_plan(desktop)[0], (1280, 720))
+        s.resolution = (1920, 1080)                 # a framed window leaves room for the title bar
+        w, h = s.window_plan(desktop)[0]
+        self.assertLessEqual(h, 1000)
 
     def test_click_on_slider_sets_volume(self):
         tx, ty, tw, th = self.ui.slider_track(0)
         self.ui._click((tx + tw // 2, ty + th // 2))
-        self.assertEqual(self.settings.master_volume, 50)
+        self.assertEqual(self.ui.settings.master_volume, 50)
         self.assertEqual(self.ui.dragging, 0)
 
     def test_everything_fits_inside_the_panel(self):

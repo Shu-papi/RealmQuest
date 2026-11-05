@@ -1,0 +1,52 @@
+{
+    "sprite": {
+        "sheet": "goblin_sheet.png",
+        "frame_width": 50,
+        "frame_height": 50,
+        "anchor": [25, 36],
+        "scale": 3,
+        "facing_default": "left"
+    },
+
+    "animations": {
+        "idle": {
+            "frames": [0, 1, 2, 1],
+            "durations": [250, 250, 250, 250],
+            "loop": true
+        },
+        "walk": {
+            "frames": [3, 4, 5, 6],
+            "durations": [250, 250, 250, 250],
+            "loop": true
+        },
+        "attack": {
+            "frames": [7, 8, 9, 10],
+            "durations": [200, 100, 100, 200],
+            "loop": false,
+            "hit_frame": 2
+        }
+    },
+
+    "stats": {
+        "health": 10,
+        "damage": 1,
+        "attack_cooldown": 1.2
+    },
+
+    "movement": {
+        "walk_speed": 2.0,
+        "chase_speed": 3.8
+    },
+
+    "ai": {
+        "sight_range": 6.0,
+        "attack_range": 1.8,
+        "wander_range": 4.0,
+        "idle_time_min": 1.0,
+        "idle_time_max": 3.0,
+        "lose_aggro_idle_min": 0.5,
+        "lose_aggro_idle_max": 1.5,
+        "post_attack_pause": 0.3
+    }
+}
+

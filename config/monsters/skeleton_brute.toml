@@ -1,0 +1,41 @@
+# ==========================================================================
+#  RealmQuest  -  SKELETON BRUTE
+#  A skeleton (src/monsters/). Stats at tier 'normal'; a tier (config/tiers.toml) multiplies them.
+#  The Lich King's army, the Lich King Dungeon rooms and the north-road night raid all use it.
+#
+#  Change a number and save (no restart). Delete a line and the game uses its built-in default.
+#  A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the player loses.
+# ==========================================================================
+
+# ==========================================================================
+# BONE BRUTE
+# ==========================================================================
+max_hp = 900                              # Health at tier 'normal' (a tier multiplies this, see [tiers]).
+radius = 28                               # Hit circle (pixels).
+speed = 58.0                              # Walking speed (pixels per second).
+damage = 39                               # Damage of its main attack (tier 'normal').
+xp = 30                                   # Experience it gives.
+gold = [10, 25]                           # Gold dropped: [min, max].
+loot = [["Bone Dust", 1.0], ["Iron Maul Head", 0.25], ["Ram Horn", 0.2]]  # Drops: [item, chance 0-1] pairs.
+spawn_time = 1.3                          # Seconds it takes to rise from the ground (can't be hurt meanwhile).
+dying_time = 1.25                         # Length of its death animation.
+stagger_time = 0.28                       # How long a hit interrupts it.
+stagger_cooldown = 1.4                    # After a stagger it shrugs hits off this long (no stun-lock).
+strike_time = 0.3                         # Duration of the attack itself.
+recover_time = 1.0                        # Seconds it is open for a counter-attack after attacking.
+poise = true                              # true = hits never interrupt it.
+knockback = 190.0                         # How far a hit pushes it.
+knockback_resist = 0.85                   # 0 = normal, 1 = immovable.
+windup_time = 0.7                         # WARNING time before the main attack. Smaller = harder to dodge.
+slam_radius = 76                          # Brute: size of the hammer slam circle.
+slam_reach = 62                           # Brute: how far in front of it the slam lands.
+attack_range = 70                         # Starts its main attack from this far away.
+attack_cooldown = 0.6                     # Seconds between main attacks.
+swipe_range = 16                          # Brute basic attack: starts when you are this close.
+swipe_windup = 0.28                       # Brute basic attack: warning time.
+swipe_reach = 36                          # Brute basic attack: how far in front it reaches.
+swipe_damage = 0.5                        # Brute basic attack: fraction of the slam damage.
+swipe_cooldown = 1.1                      # Brute basic attack: seconds between swipes.
+swipe_chance = 0.6                        # Brute basic attack: chance (0-1) to backhand instead of slamming when you are close.
+aim_lock = 0.3                            # It stops tracking you this long before attacking. Smaller = harder to dodge.

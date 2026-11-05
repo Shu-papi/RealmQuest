@@ -1,0 +1,21 @@
+# ============================================================================================================
+#  RealmQuest  -  TREANT
+#  Berserker Dungeon regular: slow and tough; its roots hold the hero in place.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Treant"                           # Name shown on its health bar.
+hp = 650                                  # Health (the hero's sword does sword_damage + gear per hit, see hero.toml).
+speed = 48                                # Walking speed (pixels per second).
+damage = 21                               # Health the hero loses per hit (before armour).
+color = [110, 80, 50]                     # Placeholder colour (only used if the sprite can't load): [red, green, blue].
+radius = 18                               # Hit circle (pixels). Bigger = easier to hit.
+root_cooldown = 4.5                       # Seconds between root attacks.
+root_range = 220                          # It roots when the hero is this close.
+root_delay = 0.8                          # Seconds from the green warning circle to the roots bursting out.
+root_radius = 40                          # Size of the root circle (pixels).
+root_damage = 15                          # Health lost when the roots grab.
+root_time = 1.2                           # Seconds the hero is held (can't walk or dash).

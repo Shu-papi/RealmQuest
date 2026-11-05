@@ -24,11 +24,16 @@ import random
 import pygame
 
 try:
-    from .combat import Enemy, SWORD_REACH
+    from . import combat as _combat
+    from .combat import Enemy, EnemyBolt, CONTACT_REACH, sword_hits, _try_step, kill_xp
 except ImportError:
-    from combat import Enemy, SWORD_REACH
+    import combat as _combat
+    from combat import Enemy, EnemyBolt, CONTACT_REACH, sword_hits, _try_step, kill_xp
 
 WARD_CENTER = (1400, 1640)
+RAID_FIREBALL_CD = 2.2         # s between a raiding shaman's fireballs
+CHASE_RANGE = 220              # raiders turn on the hero this close
+SKELETON_BOX = (900, 250, 1000, 1600)   # x, y, w, h: where the Lich King's skeletons fight (north road + plaza)
 WARD_R = 150
 WARD_MAX = 100
 HOME_RANGE = 1100              # a raid only plays out if Himmel is this close to the plaza at nightfall
@@ -41,13 +46,80 @@ PATHS = {
     "lich":      [(1400, 400), (1400, 430), (1398, 600), (1415, 860), (1385, 1150), (1408, 1380), (1400, 1560)],
 }
 ROAD_NAME = {"goblin": "west road", "berserker": "east road", "lich": "north road"}
-# name, hp, speed, damage, colour, radius
-MONSTERS = {
-    "goblin":    ("Goblin Raider", 6, 72, 2, (112, 150, 70), 13),
-    "berserker": ("Berserker", 9, 80, 3, (174, 76, 52), 15),
-    "lich":      ("Deadling", 11, 62, 3, (112, 86, 164), 14),
+# Who comes down each road: the dungeons' own monsters, so their numbers come from the same config files
+# (config/monsters/<file>.toml). source -> [(chance, row table in combat.py (None = a constant), key, skin)]
+RAIDERS = {
+    "goblin":    [(0.6, "GOBLIN_MOBS", "shaman", "goblin_shaman"), (0.4, None, "GOBLIN_WAR_BOAR", "giant_boar")],
+    "berserker": [(0.7, "BERSERKER_MOBS", "orc", "orc_warrior"), (0.3, "BERSERKER_MOBS", "treant", "treant")],
+    "lich":      [(1.0, "GOBLIN_MOBS", "minion", "goblin_minion")],     # (never used: the lich raid sends skeletons)
 }
 ORDER = ("goblin", "berserker", "lich")
+
+
+def _raider_class():
+    """SkeletonRaider, built on monsters.in_game.SkeletonEnemy (imported late: combat.py puts src/ on the path)."""
+    global SkeletonRaider
+    if SkeletonRaider is not None:
+        return SkeletonRaider
+    from monsters.in_game import SkeletonEnemy
+
+    class _SkeletonRaider(SkeletonEnemy):
+        """A skeleton on the raid road: marches waypoint to waypoint, claws Merlin's ward,
+        and fights the hero (its own AI, hits through pc.hurt) whenever he comes close."""
+
+        def __init__(self, host, monster, path=None, **kw):
+            super().__init__(host, monster, **kw)
+            self.path = path or PATHS["lich"]
+            self.idx = 1
+            self.claw = 0.6
+            self.off = (host.rng.uniform(-28, 28), host.rng.uniform(-14, 14))
+
+        def step(self, dt, player, ground, pc, night):
+            if self.dead:
+                return
+            host = self.host
+            if not pc.dead and math.hypot(player.x - self.x, player.y - self.y) < CHASE_RANGE:
+                host.hero_from(player, pc, ground)
+                self.run(dt, host.hero)
+                self.fighting = True
+                return
+            m = self.monster
+            if getattr(self, "fighting", False):           # it stops fighting: drop a half-swung attack
+                self.fighting = False
+                if m.state not in ("spawn", "dying", "dead", "stagger") and m.state != m.START_STATE:
+                    m.set_state(m.START_STATE)
+            wx, wy = WARD_CENTER
+            at_ward = math.hypot(self.x - wx, self.y - wy) < WARD_R - 20
+            if at_ward:                                   # claw at the ward
+                tx, ty = wx, wy
+                self.claw -= dt
+                if self.claw <= 0 and not m.spawning:
+                    self.claw = 1.2
+                    night.hit_ward(max(1, round(m.damage * host.damage_k)) * 2, self.x, self.y)
+            else:                                         # march down the road
+                tx, ty = self.path[min(self.idx, len(self.path) - 1)]
+                tx, ty = tx + self.off[0], ty + self.off[1]
+                if math.hypot(tx - self.x, ty - self.y) < 40 and self.idx < len(self.path) - 1:
+                    self.idx += 1
+            dx, dy = tx - self.x, ty - self.y
+
+            def march(dt_, _player, _bounds):
+                m.face(m.x + dx)
+                if not at_ward:
+                    m.move(dx, dy, m.speed, dt_)
+
+            m.think = march                               # (instance attribute: shadows its fighting AI)
+            try:
+                self.run(dt, host.hero)
+            finally:
+                del m.think
+
+    _SkeletonRaider.__name__ = _SkeletonRaider.__qualname__ = "SkeletonRaider"
+    SkeletonRaider = _SkeletonRaider
+    return SkeletonRaider
+
+
+SkeletonRaider = None          # the class, once _raider_class() has built it
 
 
 class _Ground:
@@ -64,10 +136,16 @@ class _Ground:
 
 class RaidMonster(Enemy):
     def __init__(self, sid, path, rng):
-        name, hp, speed, dmg, col, rad = MONSTERS[sid]
+        choices = RAIDERS[sid]
+        _chance, table, key, skin = rng.choices(choices, [c[0] for c in choices])[0]
+        src = vars(_combat) if table is None else getattr(_combat, table)
+        name, hp, speed, dmg, col, rad = src[key][:6]
         x, y = path[0]
-        super().__init__(x + rng.uniform(-30, 30), y + rng.uniform(-20, 20), name, hp, speed * rng.uniform(0.9, 1.1),
-                         dmg, col, rad)
+        k = rng.uniform(0.9, 1.1)
+        super().__init__(x + rng.uniform(-30, 30), y + rng.uniform(-20, 20), name, hp, speed * k, dmg, col, rad)
+        self.cfg, self.cfg_speed_k = (src, key), k        # refresh_config(): the config file changed
+        self.skin = skin
+        self.ranged = skin == "goblin_shaman"            # shamans throw fireballs (night.bolts), not bites
         self.path = path
         self.idx = 1
         self.claw = rng.uniform(0.2, 1.0)
@@ -78,13 +156,25 @@ class RaidMonster(Enemy):
             return
         self.attack_cd = max(0.0, self.attack_cd - dt)
         self.hit_flash = max(0.0, self.hit_flash - dt)
+        if self.cc_tick(dt):
+            return
         dp = math.hypot(player.x - self.x, player.y - self.y)
+        self.face_x = 0
         if dp < 220 and not pc.dead:                     # chase Himmel
-            if dp > self.radius + 22:
+            self.face_x = 1 if player.x > self.x else -1
+            if self.ranged:                              # keep some distance and throw fireballs
+                if dp < 120:
+                    self._move(self.x - player.x, self.y - player.y, dt, ground)
+                if self.attack_cd <= 0:
+                    self.attack_cd = RAID_FIREBALL_CD
+                    night.bolts.append(EnemyBolt(self.x, self.y, player.x - self.x, player.y - self.y, self.damage))
+                    self.sounds.append("shaman_fireball")
+                return
+            if dp > self.radius + CONTACT_REACH:
                 self._move(player.x - self.x, player.y - self.y, dt, ground)
             elif self.attack_cd <= 0 and pc.hurt(self.damage, player, ground, self.x, self.y):
-                self.attack_cd = 0.9
-                night.sfx.play("hurt")
+                self.attack_cd = 0.9          # the Game plays the hurt sound (PlayerCombat.hits)
+                self.noise("attack")
             return
         wx, wy = WARD_CENTER
         if math.hypot(self.x - wx, self.y - wy) < WARD_R - 20:    # at the ward: claw at it
@@ -97,23 +187,21 @@ class RaidMonster(Enemy):
         tx, ty = tx + self.off[0], ty + self.off[1]
         if math.hypot(tx - self.x, ty - self.y) < 14 and self.idx < len(self.path) - 1:
             self.idx += 1
-        self._move(tx - self.x, ty - self.y, dt, None if self.idx < len(self.path) else ground)
+        self._move(tx - self.x, ty - self.y, dt, None if self.idx < len(self.path) - 1 else ground)
 
     def _move(self, dx, dy, dt, ground):
         d = math.hypot(dx, dy) or 1.0
-        sx, sy = dx / d * self.speed * dt, dy / d * self.speed * dt
+        v = self.speed * self.speed_k * dt
+        sx, sy = dx / d * v, dy / d * v
         if ground is None:                 # on the road: just walk
             self.x += sx
             self.y += sy
             return
-        if ground.can_stand(self.x + sx, self.y):
-            self.x += sx
-        if ground.can_stand(self.x, self.y + sy):
-            self.y += sy
+        _try_step(self, dx / d, dy / d, v, ground)      # slides along / turns past obstacles
 
     def draw(self, surf, cx, cy):
         super().draw(surf, cx, cy)
-        if not self.dead:      # glowing eyes, so they read at night
+        if not self.dead and not self.skin:      # glowing eyes, so they read at night
             x, y = int(self.x - cx), int(self.y - cy - 14)
             for ex in (-5, 5):
                 surf.fill((255, 70, 50), (x + ex - 1, y - 3, 3, 2))
@@ -156,11 +244,14 @@ class Night:
         self.on_event = on_event or (lambda *a: None)
         self.on_xp = lambda *a: None             # set by the Game: on_xp(amount, x, y)
         self.ground = _Ground(world)
+        self.bolts: list = []                    # goblin shamans' fireballs (combat.EnemyBolt)
         self.rng = random.Random()
         self.eyes = _eye_spots(world, random.Random(7))
         self.active = False
         self.source = None
         self.monsters: list[RaidMonster] = []
+        self.host = None                     # the Lich King's skeletons (monsters.in_game.SkeletonHost), lich raids
+        self.pending_warden = False          # the last lich wave ends with the Barrow Warden
         self.to_spawn: list[float] = []      # spawn timers for the current wave
         self.waves_left = 0
         self.ward = WARD_MAX
@@ -206,6 +297,7 @@ class Night:
         self.waves_left = 2 + (1 if stage >= 1 else 0)
         self.ward = WARD_MAX
         self.monsters.clear()
+        self._make_host()
         self._next_wave()
         self.banner_t = 4.0
         self.sfx.play("roar")
@@ -217,6 +309,34 @@ class Night:
         self.waves_left -= 1
         n = 3 + self.save.stage + self.rng.randint(0, 1)
         self.to_spawn = [i * 0.8 for i in range(n)]
+        self.pending_warden = self.host is not None and self.waves_left == 0
+
+    def _make_host(self):
+        """A lich raid: the skeletons fight in a box over the north road and the plaza."""
+        if self.host is not None:
+            self.host.clear()
+        self.host = None
+        if self.source != "lich":
+            return
+        from monsters.in_game import SkeletonHost
+        x, y, w, h = SKELETON_BOX
+        self.host = SkeletonHost(x, y, w, h, "raid", ground=self.ground, seed=self.rng.random())
+        self.host.raise_as = (_raider_class(), {"path": PATHS["lich"]})
+
+    def _spawn_raider(self, path):
+        """One monster down the road: a skeleton in a lich raid (the Barrow Warden last), else a RaidMonster."""
+        if self.host is None:
+            return RaidMonster(self.source, path, self.rng)
+        from monsters.in_game import make_warden, skeleton_roster
+        x, y = path[0][0] + self.rng.uniform(-30, 30), path[0][1] + self.rng.uniform(-20, 20)
+        raider = _raider_class()
+        if self.pending_warden and not self.to_spawn:            # the last wave's last one: the mini-boss
+            self.pending_warden = False
+            self.world.toast("The Barrow Warden comes down the north road!", (255, 150, 120))
+            self.sfx.play("roar")
+            return make_warden(self.host, x, y, "Barrow Warden", "cursed", proxy=raider, path=path)
+        name = skeleton_roster(self.rng, 1)[0]
+        return self.host.add(name, x, y, proxy=raider, path=path)
 
     def hit_ward(self, dmg, x, y):
         self.ward = max(0, self.ward - dmg)
@@ -229,17 +349,26 @@ class Night:
         """Leaving the village mid-raid (should not happen in play: portals are closed)."""
         self.active = False
         self.monsters.clear()
+        self.bolts.clear()
+        if self.host is not None:
+            self.host.clear()
+        self.host = None
         self.to_spawn = []
 
     def end_raid(self, won):
         self.active = False
         self.monsters.clear()
+        self.bolts.clear()
+        if self.host is not None:
+            self.host.clear()
+        self.host = None
         self.to_spawn = []
         if won:
             gold = 20 + 10 * self.save.stage
             self.save.gold += gold
             self.save.raids += 1
-            self.on_xp(int(30 * (self.save.stage + 1) * OVERWORLD_XP), WARD_CENTER[0], WARD_CENTER[1] - 60)
+            self.on_xp(int(30 * (self.save.stage + 1) * OVERWORLD_XP), WARD_CENTER[0], WARD_CENTER[1] - 60,
+                       "reward")
             self.result = ("Oakwood holds!  +%d gold" % gold, (150, 230, 150), 4.0)
             self.sfx.play("victory")
             self.on_event("raid_won")
@@ -286,15 +415,23 @@ class Night:
             self.to_spawn[i] -= dt
         while self.to_spawn and self.to_spawn[0] <= 0:
             self.to_spawn.pop(0)
-            self.monsters.append(RaidMonster(self.source, path, self.rng))
+            self.monsters.append(self._spawn_raider(path))
         for m in self.monsters:
             m.step(dt, player, self.ground, pc, self)
+            for name in m.pop_sounds():
+                self.sfx.play(name)
+        for bolt in self.bolts:
+            bolt.update(dt, player, self.ground, pc)
+        self.bolts[:] = [b for b in self.bolts if not b.dead]
+        if self.host is not None:                # skeletons: spacing, the raised dead, falling apart
+            self.host.step(dt)
+            self.monsters.extend(self.host.new_members())
         if not self.active:          # the ward broke this frame
             return
         tier = ORDER.index(self.source) + 1
         for m in self.monsters:
-            if m.dead:
-                self.on_xp(max(1, int(m.max_hp * tier * OVERWORLD_XP)), m.x, m.y)
+            if m.dead and not getattr(m, "no_reward", False):
+                self.on_xp(max(1, int(kill_xp(m.max_hp) * tier * OVERWORLD_XP)), m.x, m.y)
         self.monsters = [m for m in self.monsters if not m.dead]
         if pc.dead:
             self.end_raid(False)
@@ -316,11 +453,10 @@ class Night:
                 continue
             vx, vy = m.x - player.x, m.y - player.y
             d = math.hypot(vx, vy) or 1.0
-            if d <= SWORD_REACH + m.radius and (vx * dx + vy * dy) / d >= 0.15:
+            if sword_hits(player.x, player.y, dx, dy, m.x, m.y, m.radius):
                 m.take_damage(dmg)
                 hit = True
-        if hit:
-            self.sfx.play("hit")
+        return hit                                # (the Game plays the hit sound once per swing)
 
     # ---- drawing ----------------------------------------------------------------------
     def lights(self, t):
@@ -334,9 +470,12 @@ class Night:
         return out
 
     def draw_world(self, scr, cx, cy, t):
+        if self.host is not None:
+            self.host.draw(scr, cx, cy)          # the Lich King's skeletons
         for m in sorted(self.monsters, key=lambda m: m.y):
             m.draw(scr, cx, cy)
-        self.pc.draw_slash(scr, self.world.player, cx, cy)
+        for bolt in self.bolts:
+            bolt.draw(scr, cx, cy, t)
 
     def draw_glow(self, scr, cx, cy, t):
         n = self.night_level

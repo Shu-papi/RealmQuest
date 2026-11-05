@@ -1,0 +1,17 @@
+# ============================================================================================================
+#  RealmQuest  -  ORC WARLORD
+#  MINI-BOSS of the Berserker Dungeon and its minis: a bigger, recoloured orc.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Orc Warlord"                      # Name shown on its health bar.
+hp = 1500                                 # Health (the hero's sword does sword_damage + gear per hit, see hero.toml).
+speed = 76                                # Walking speed (pixels per second).
+damage = 33                               # Health the hero loses per hit (before armour).
+color = [160, 50, 40]                     # Placeholder colour (only used if the sprite can't load): [red, green, blue].
+radius = 22                               # Hit circle (pixels). Bigger = easier to hit.
+size = 1.35                               # How much bigger it is drawn than an orc warrior.
+reach = 48                                # Pixels past its hit circle that its axe reaches (a normal orc: see orc_warrior.toml).

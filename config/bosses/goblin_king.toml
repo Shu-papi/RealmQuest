@@ -1,0 +1,38 @@
+# ============================================================================================================
+#  RealmQuest  -  VALDUR, THE GOBLIN KING
+#  Boss of the Goblin Dungeon (floor 1-3). Ranges are in arena pixels: in the dungeon they are x [dungeon]
+#  dist_k.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+aggro_range = 300                         # He wakes when the hero comes this close.
+heavy_trigger_range = 150                 # He uses Berserker Rush (overhead slam) when the hero is this close.
+special_trigger_range = 250               # He uses Critical Cleave (spin + slam) when the hero is this close.
+heavy_cooldown = 7.0                      # Seconds between Berserker Rushes.
+special_cooldown = 8.0                    # Seconds between Critical Cleaves.
+special_cooldown_enraged = 6.0            # ...when he is below enrage_hp_fraction of his health.
+enrage_hp_fraction = 0.5                  # Below this share of his health he cleaves more often.
+start_heavy_cooldown = 6.0                # Seconds before his first Berserker Rush.
+start_special_cooldown = 6.0              # Seconds before his first Critical Cleave.
+phase2_hp_fraction = 0.5                  # At this share of his health he roars and calls his minions (once).
+summon_time = 1.2                         # Seconds he roars (can't be hurt meanwhile).
+phase2_speed_k = 1.2                      # His walk speed x this in phase 2.
+phase2_summons = ["minion", "minion", "shaman", "extra"] # Who comes: "minion", "shaman", "slime", "boar" or "extra" (a random one).
+summon_ring = 110                         # How far from him they appear (pixels).
+slam_reach = 170                          # How far Berserker Rush's overhead slam reaches (arena px, x dist_k in the dungeon).
+spin_reach = 250                          # How far Critical Cleave's tornado spin reaches, all around him.
+ground_slam_reach = 230                   # How far Critical Cleave's ground slam reaches.
+
+# In the dungeon: max_hp, speed (px/s), dist_k (ranges x this), base_scale (sprite size), and the damage of
+# his slam, his tornado spin and his ground slam.
+[dungeon]
+max_hp = 4000
+speed = 100
+dist_k = 0.6
+base_scale = 3
+slam_damage = 55
+spin_damage = 75
+ground_slam_damage = 110

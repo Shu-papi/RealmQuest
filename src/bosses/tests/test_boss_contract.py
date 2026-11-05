@@ -5,6 +5,7 @@ Every boss in bosses.BOSSES is tested automatically. The _template boss is
 tested too, so you know your starting point works.
 Run from the repo root:  python -m unittest discover -s src/bosses/tests
 """
+import os as _os; _os.environ["REALMQUEST_BALANCE"] = "none"      # these tests pin the code's DEFAULT numbers, not your config/ tuning
 import os
 import sys
 import unittest

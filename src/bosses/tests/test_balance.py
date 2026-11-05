@@ -14,7 +14,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.dirname(os.path.dirname(HERE))
 REPO = os.path.dirname(SRC_DIR)
-SHIPPED = os.path.join(REPO, "config", "balance.toml")
+SHIPPED = os.path.join(REPO, "config")          # the config folder: one file per boss / monster / class
 
 SNAPSHOT = r'''
 import json, sys
@@ -52,7 +52,7 @@ print(json.dumps(out, sort_keys=True))
 def snapshot(config_path):
     """Everything tunable, as the game sees it with this config. Returns (data, warnings printed)."""
     code = SNAPSHOT % {"src": SRC_DIR, "tests": HERE}
-    env = dict(os.environ, REALMQUEST_BALANCE=config_path)
+    env = dict(os.environ, REALMQUEST_BALANCE=config_path, PYGAME_HIDE_SUPPORT_PROMPT="1")   # (no pygame banner in the JSON)
     result = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, cwd=tempfile.gettempdir())
     if result.returncode != 0:
         raise AssertionError(result.stderr)
@@ -88,7 +88,8 @@ class TestBalanceConfig(unittest.TestCase):
     def test_a_freshly_generated_config_changes_nothing(self):
         """The generator writes every number in the code, so loading it must give exactly the defaults."""
         generated = subprocess.run([sys.executable, os.path.join(REPO, "tools", "make_balance_config.py"), "--stdout"],
-                                   capture_output=True, text=True, cwd=tempfile.gettempdir())
+                                   capture_output=True, text=True, cwd=tempfile.gettempdir(),
+                                   env=dict(os.environ, PYGAME_HIDE_SUPPORT_PROMPT="1"))
         self.assertEqual(generated.returncode, 0, generated.stderr)
         data, warnings = self.run_config(generated.stdout)
         self.assertEqual(warnings, [])
@@ -96,7 +97,8 @@ class TestBalanceConfig(unittest.TestCase):
 
     def test_every_setting_in_the_code_is_in_the_generated_file(self):
         generated = subprocess.run([sys.executable, os.path.join(REPO, "tools", "make_balance_config.py"), "--stdout"],
-                                   capture_output=True, text=True, cwd=tempfile.gettempdir()).stdout
+                                   capture_output=True, text=True, cwd=tempfile.gettempdir(),
+                                   env=dict(os.environ, PYGAME_HIDE_SUPPORT_PROMPT="1")).stdout
         import tomllib
         table = tomllib.loads(generated)
 
