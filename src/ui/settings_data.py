@@ -124,13 +124,21 @@ class Settings:
     # ---------- applying to pygame ----------
 
     def apply_audio(self):
-        """Set the music volume in pygame (sound effects read effective_volume('sfx'))."""
+        """Tell pygame and the audio package (src/audio) the new volumes."""
         try:
             import pygame
             if pygame.mixer.get_init():
                 pygame.mixer.music.set_volume(self.effective_volume("music"))
         except Exception:
             pass                         # no sound device: ignore
+        try:
+            try:
+                import audio             # src/ is on sys.path
+            except ImportError:
+                from src import audio
+            audio.apply_settings(self)   # sound effects, music and loops follow the sliders too
+        except Exception:
+            pass
 
     def apply_display(self, size):
         """Make the window fullscreen or not. Returns the new screen Surface."""
