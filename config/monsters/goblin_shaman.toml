@@ -1,0 +1,19 @@
+# ============================================================================================================
+#  RealmQuest  -  GOBLIN SHAMAN
+#  Goblin Dungeon regular: throws fireballs and shields its friends.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Goblin Shaman"                    # Name shown on its health bar.
+hp = 300                                  # Health (the hero's sword does sword_damage + gear per hit, see hero.toml).
+speed = 70                                # Walking speed (pixels per second).
+damage = 10                               # Health the hero loses per hit (before armour).
+color = [112, 150, 70]                    # Placeholder colour (only used if the sprite can't load): [red, green, blue].
+radius = 14                               # Hit circle (pixels). Bigger = easier to hit.
+barrier_shield = 40                       # Damage its barrier soaks, per monster.
+barrier_time = 6.0                        # Seconds a barrier lasts.
+barrier_range = 170                       # Pixels around the shaman that the barrier reaches.
+barrier_cooldown = 9.0                    # Seconds between barriers.

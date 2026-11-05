@@ -144,10 +144,7 @@ class GoblinKing:
         self.forget_range = None if cfg.FORGET_RANGE is None else cfg.FORGET_RANGE * self.dk
         self.heavy_range = cfg.HEAVY_TRIGGER_RANGE * self.dk
         self.special_range = cfg.SPECIAL_TRIGGER_RANGE * self.dk
-        dmg = t.get("damage", {})
-        self.hits = {name: {f: (reach * self.dk, dmg.get(name, {}).get(f, d), arc)
-                            for f, (reach, d, arc) in anim.get("hits", {}).items()}
-                     for name, anim in BIG_ATTACKS.items()}
+        self.build_hits(t.get("damage", {}))
         self.dir = "down"
         self.facing_left = False
         self.state = "idle"
@@ -161,6 +158,7 @@ class GoblinKing:
         self.aggro = False
         self.alert_timer = 0.0
         self.attack_angle = 0.0      # direction of the current attack (radians)
+        self.aim = None              # floor offset to the target when the last attack was chosen
         self.phase = 1               # 2 = below PHASE2_HP_FRACTION: has called his minions
         self.summon_timer = 0.0      # > 0 while he roars (can't be hurt, doesn't act)
         self.summon_ready = False    # True once the roar ends; the game spawns minions and clears it
@@ -170,6 +168,28 @@ class GoblinKing:
 
         self.big_scale = compute_big_scale(self.base_scale)
         self.load_frames()
+
+    def build_hits(self, dmg):
+        """{attack: {frame: (reach px, damage, arc)}} from the config (reach x dist_k)."""
+        self.hits = {name: {f: (reach * self.dk, dmg.get(name, {}).get(f, d), arc)
+                            for f, (reach, d, arc) in anim.get("hits", {}).items()}
+                     for name, anim in BIG_ATTACKS.items()}
+
+    def refresh_config(self, tuning=None):
+        """The config files changed while he is alive: pick up the new numbers.
+        His health keeps the same share of his (new) maximum."""
+        t = dict(tuning or {})
+        self.dk = t.get("dist_k", self.dk)
+        share = self.hp / self.max_hp if self.max_hp else 1.0
+        self.max_hp = t.get("max_hp", self.max_hp)
+        self.hp = max(1, round(self.max_hp * share)) if not self.dead else 0
+        speed = t.get("speed", cfg.WALK_SPEED)
+        self.speed = speed * (cfg.PHASE2_SPEED_K if self.phase == 2 and not self.summoning else 1.0)
+        self.aggro_range = cfg.AGGRO_RANGE * self.dk
+        self.forget_range = None if cfg.FORGET_RANGE is None else cfg.FORGET_RANGE * self.dk
+        self.heavy_range = cfg.HEAVY_TRIGGER_RANGE * self.dk
+        self.special_range = cfg.SPECIAL_TRIGGER_RANGE * self.dk
+        self.build_hits(t.get("damage", {}))
 
     def load_frames(self):
         """(Re)build every sprite frame."""
@@ -211,9 +231,13 @@ class GoblinKing:
             return
         self.set_state(name)
         self.hits_done = set()
-        # Big attacks only face left or right.
+        # Big attacks are drawn facing left or right, but their cone aims at the target
+        # (so a hero right above or below him is hit too).
         if name in BIG_ATTACKS:
-            self.attack_angle = math.pi if self.facing_left else 0.0
+            if self.aim is not None:
+                self.attack_angle = math.atan2(self.aim[1], self.aim[0])
+            else:
+                self.attack_angle = math.pi if self.facing_left else 0.0
         else:
             self.attack_angle = {"right": 0.0, "left": math.pi,
                                  "down": math.pi / 2, "up": -math.pi / 2}[self.dir]
@@ -293,6 +317,7 @@ class GoblinKing:
                 else:
                     self.dir = "up" if fdy < 0 else "down"
 
+                self.aim = (fdx, fdy)
                 if self.special_cooldown == 0 and dist <= self.special_range:
                     self.start_attack("special")
                 elif self.heavy_cooldown == 0 and dist <= self.heavy_range:

@@ -63,6 +63,10 @@ RECIPES = {
                    T(760, 900, 0.14, 0.30, decay=2.5)), False),
     "pickup": (SEQ(T(660, 660, 0.06, 0.28, decay=2.0), T(990, 990, 0.10, 0.28, decay=3.0)), False),
     "dash": (T(1400, 400, 0.18, 0.28, "sine", noise=0.9, decay=3.0), False),
+    # a fire catching in a brazier: a soft whoomp, then a warm two-note chime
+    "checkpoint": (MIX(T(180, 70, 0.30, 0.30, noise=0.8, decay=3.0, attack=0.02),
+                       ECHO(SEQ(T(392, 392, 0.10, 0.20, decay=2.0), T(587, 587, 0.30, 0.22, decay=2.4)),
+                            0.09, 0.3, 2)), False),
     "roar": (T(95, 55, 0.80, 0.50, "saw", noise=0.30, decay=1.6, attack=0.05), False),
     "clear": (SEQ(T(523, 523, 0.09, 0.30, decay=2.0), T(659, 659, 0.09, 0.30, decay=2.0),
                   T(784, 784, 0.20, 0.30, decay=3.0)), False),
@@ -342,6 +346,11 @@ class Sfx:
         snd = random.choice(variants)
         snd.set_volume(max(0.0, min(1.0, self.volume * vol * self.gain.get(name, 1.0))))
         snd.play()
+
+    def move_bed(self, index):
+        """Play the ambience on mixer channel `index` (the audio package keeps channels 0-3 for its music)."""
+        if self.ok:
+            self.bed_channel = pygame.mixer.Channel(index)
 
     def ambience(self, name, on=True):
         """Loop a background sound (goblin chatter) quietly under the music; on=False fades it out.

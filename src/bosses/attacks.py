@@ -38,6 +38,7 @@ class Projectile:
     def __init__(self, x, y, angle, speed, damage, radius=8, color=(175, 169, 236)):
         self.x = float(x)
         self.y = float(y)
+        self.angle = angle                      # the direction it was fired in (the Minotaur's arena reads it)
         self.vx = math.cos(angle) * speed
         self.vy = math.sin(angle) * speed
         self.damage = damage

@@ -5,9 +5,13 @@ from dataclasses import dataclass
 import pygame
 
 try:
-    from .combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open, GOBLIN_SKINS
+    from . import combat
+    from .combat import Encounters, PlayerCombat, projectile_open, GOBLIN_SKINS
+    from .dash_fx import DashTrail
 except ImportError:
-    from combat import Encounters, PlayerCombat, DASH_SPEED, projectile_open, GOBLIN_SKINS
+    import combat
+    from combat import Encounters, PlayerCombat, projectile_open, GOBLIN_SKINS
+    from dash_fx import DashTrail
 
 try:
     from . import dungeon_gen
@@ -45,9 +49,11 @@ except ImportError:
 try:
     from .shop import ShopMenu
     from .journal import Journal
+    from .tester import Tester
 except ImportError:
     from shop import ShopMenu
     from journal import Journal
+    from tester import Tester
 
 try:
     from .sfx import Sfx
@@ -79,6 +85,9 @@ except ImportError:
 from skills.skills import SkillFX, SLOTS                       # noqa: E402
 from characters import hero_sprites                            # noqa: E402
 from inventory.gear import roll_drop, drop_tier, POINTS_PER_LEVEL   # noqa: E402
+import audio                                                   # noqa: E402  (the bosses' sounds and music)
+import balance                                                 # noqa: E402  (config/*.toml, applied live)
+from audio.manager import AMBIENCE_CHANNEL                     # noqa: E402
 
 
 class LazySprites(dict):
@@ -121,6 +130,7 @@ FPS = 60
 TILE = 24
 MAP_W, MAP_H = 288, 162
 CELLS = MAP_W * MAP_H
+RESPAWN_DELAY = 2.5         # s the fallen hero lies there before rising (R skips it)
 PLAYER_SPEED = 180.0
 LIQUID_FRAMES = 8
 MINIMAP_REVEAL_ALL = False  # True = whole floor is lit up on the minimap from the start
@@ -1699,6 +1709,11 @@ class Minimap:
                     pygame.draw.rect(surf, (0, 0, 0), (mx - 1, my - 4, 4, 9))
                     pygame.draw.line(surf, (110, 200, 255), (mx - 3, my + 1), (mx + 3, my + 1), 2)
                     pygame.draw.line(surf, (110, 200, 255), (mx, my - 3), (mx, my + 3), 2)
+                elif kind in ("checkpoint", "checkpoint_lit"):
+                    col = (255, 160, 70) if kind == "checkpoint_lit" else (150, 150, 160)
+                    pts = [(mx, my - 5), (mx + 4, my + 3), (mx - 4, my + 3)]
+                    pygame.draw.polygon(surf, (0, 0, 0), [(mx, my - 7), (mx + 6, my + 4), (mx - 6, my + 4)])
+                    pygame.draw.polygon(surf, col, pts)
                 elif kind == "gate":
                     pygame.draw.rect(surf, (0, 0, 0), (mx - 4, my - 3, 9, 8))
                     pygame.draw.rect(surf, (230, 230, 240), (mx - 3, my - 2, 7, 6))
@@ -2318,6 +2333,9 @@ class Player:
         self.dust_t = 0.0
         self.dash_t = 0.0                  # > 0 while dashing (Shift)
         self.dash_dir = (0.0, 1.0)
+        self.root_t = 0.0                  # boss status: held by bony hands (no walking, no dashing)
+        self.slow_t = 0.0                  # boss status: half speed
+        self.trail = DashTrail()           # afterimages and speed lines while dashing (dash_fx.py)
         self.shadow = blank(22, 10)
         pygame.draw.ellipse(self.shadow, (0, 0, 0, 60), (0, 0, 22, 10))
         pygame.draw.ellipse(self.shadow, (0, 0, 0, 90), (3, 2, 16, 6))
@@ -2333,20 +2351,37 @@ class Player:
         """Play the attack / special animation (the Game calls this on swings and skills)."""
         self.sprite.act(kind, duration)
 
+    def afflict(self, name: str, seconds: float):
+        """A boss's status effect: 'root' or 'slow' for `seconds`."""
+        if name == "root":
+            self.root_t = max(self.root_t, seconds)
+            self.dash_t = 0.0
+        elif name == "slow":
+            self.slow_t = max(self.slow_t, seconds)
+
     def place(self, x: float, y: float):
         self.x, self.y = x, y
         self.dash_t = 0.0
+        self.root_t = self.slow_t = 0.0
         self.dust.clear()
+        self.trail.clear()
 
     def move(self, dx: float, dy: float, dungeon: Dungeon, dt: float):
         for p in self.dust:
             p[2] -= dt
         self.dust = [p for p in self.dust if p[2] > 0]
         speed = PLAYER_SPEED * self.speed_k
+        self.root_t = max(0.0, self.root_t - dt)
+        self.slow_t = max(0.0, self.slow_t - dt)
+        if self.slow_t > 0:
+            speed *= 0.5
+        if self.root_t > 0:                # rooted: the keys and a dash do nothing
+            dx = dy = 0.0
+            self.dash_t = 0.0
         if self.dash_t > 0:                # a dash overrides the keys for a moment
             self.dash_t = max(0.0, self.dash_t - dt)
             dx, dy = self.dash_dir
-            speed = DASH_SPEED
+            speed = combat.DASH_SPEED          # read live: the config file can change it
         self.moving = dx != 0 or dy != 0
         if not self.moving:
             self.anim = 0.0
@@ -2391,6 +2426,8 @@ class Player:
         if self.dir in ("left", "right"):  # up / down keep the last side
             self.flip = self.dir == "left"
         surf.blit(self.shadow, (sx - 11, sy - 6))
+        self.trail.draw(surf, self.sprite, self.x, self.y, self.flip, self.dash_t > 0,
+                        self.x - sx, self.y - sy, self.dash_dir)
         self.sprite.set_dead(self.dead)
         self.sprite.draw(surf, sx, sy + 2, moving=self.moving and not self.dead, left=self.flip)
 
@@ -2400,7 +2437,7 @@ class Player:
 # --------------------------------------------------------------------------
 
 class Game:
-    def __init__(self):
+    def __init__(self, tester: bool = False):
         pygame.init()
         pygame.display.set_caption("RealmQuest - Beyond the Veil")
         self.settings = Settings.load()
@@ -2428,6 +2465,7 @@ class Game:
         self.juice = Juice(self.settings)            # shake, hit-pause, puffs, hurt flash
         self.menu_fade = 0.0                         # fade-in of the home screen
         self.fall_t = 0.0                            # how long the hero has lain fallen in the overworld
+        self.death_t = 0.0                           # how long the hero has lain fallen in a dungeon
         # Campaign save (gold, upgrades, cleared dungeons, keepsakes, story flags)
         self.has_save = SaveState.exists()
         self.save = SaveState.load()
@@ -2485,6 +2523,11 @@ class Game:
         self.hero_hud = HeroHUD()
         self.build_keys()
         self.apply_volumes()
+        if audio.init(self.settings):                       # the bosses' sounds and music (silent if no sound card)
+            self.sfx.move_bed(AMBIENCE_CHANNEL)             # the goblin chatter keeps its own mixer channel
+        self.boss_audio = False
+        self.tester = Tester(self) if tester else None      # run_map.py --tester (src/maps/tester.py)
+        self.config_watch = balance.ConfigWatcher()         # config/*.toml saved -> applied live
         self.night = night_raid.Night(self.surface, self.save, self.pc, self.sfx, self.on_night_event)
         self.wilds = wilds.Wilds(self.surface, self.save, self.pc, self.sfx, self.village_xp)
         self.night.on_xp = self.village_xp
@@ -2545,6 +2588,57 @@ class Game:
         self.save.apply_to(self.pc)
         for p in (self.surface.player, self.player):
             p.speed_k = self.pc.speed_k
+
+    # ---- live config ---------------------------------------------------------------
+    def check_config(self, now=None):
+        """Every frame: when a config file was saved, apply it to everything at once."""
+        changed = self.config_watch.poll(now)
+        if changed:
+            self.on_config_reloaded(changed)
+        return changed
+
+    def on_config_reloaded(self, changed=()):
+        """Re-read config/ and refresh what copied a number when it was made: the hero, every monster
+        and boss alive (health keeps the same share of its new maximum) and the overworld mobs."""
+        warnings = balance.reload()
+        pc = self.pc
+        share = pc.hp / pc.max_hp if pc.max_hp else 1.0
+        cls = getattr(pc, "character_class", None) or self.save.hero_class
+        dead = pc.dead
+        fill = {n: (b[0] / b[1] if b[1] else 1.0) for n, b in pc.pools.bars.items()}
+        cds = dict(pc.caster.cd)
+        pc.apply_class(cls)
+        self.refresh_stats()
+        for n, b in pc.pools.bars.items():               # same share of each bar as before (no free refill)
+            b[0] = b[1] * fill.get(n, 1.0)
+        for slot, left in cds.items():                    # cooldowns keep running
+            if slot in pc.caster.cd:
+                pc.caster.cd[slot] = left
+        if not dead:
+            pc.hp = max(1, min(pc.max_hp, round(pc.max_hp * share)))
+        if self.mode == "dungeon":
+            enc = getattr(self, "enc", None)
+            if enc is not None and hasattr(enc, "refresh_config"):
+                enc.refresh_config()
+        self.wilds.refresh_config()
+        for m in list(getattr(self.night, "monsters", [])):
+            fn = getattr(m, "refresh_config", None)
+            if fn is not None:
+                fn()
+        host = getattr(self.night, "host", None)
+        if host is not None:
+            host.refresh_config()
+        names = ", ".join(changed) if changed else "config"
+        if warnings:
+            msg = "Config: %d problem%s (see console) - %s" % (len(warnings), "" if len(warnings) == 1 else "s",
+                                                                warnings[0][:70])
+            col = (255, 170, 140)
+        else:
+            msg = "Config reloaded: " + (names if len(names) < 60 else names[:57] + "...")
+            col = (180, 230, 170)
+        if self.state == "playing":
+            (self.toast if self.mode == "dungeon" else self.surface.toast)(msg, col)
+        return warnings
 
     def open_sheet(self):
         self.save.pull_from(self.pc)
@@ -2705,8 +2799,8 @@ class Game:
         self.react_to_hits()
         if self.fx.barrier is not None:          # Arcane Barrier / Blade Ward now guard the hero
             self.pc.barrier, self.fx.barrier = self.fx.barrier, None
-        if self.fx.guards and self.mode == "dungeon":     # Blade Ward blocks shots flying in
-            for b in self.enc.bolts:
+        if self.fx.guards:                                 # Blade Ward blocks shots flying in
+            for b in (self.enc.bolts if self.mode == "dungeon" else self.wilds.bolts + self.night.bolts):
                 if any(math.hypot(b.x - gx, b.y - gy) <= r for gx, gy, r in self.fx.guards):
                     b.dead = True
         self.update_loot(dt)
@@ -2715,8 +2809,8 @@ class Game:
         self.fx.sounds.clear()
         if self.fx.basic_dealt:                # arrows that landed fill the Archer's energy
             if self.pc.energy_on_hit:
-                self.pc.pools.add("energy", self.fx.basic_dealt * self.pc.energy_on_hit)
-            self.fx.basic_dealt = 0
+                self.pc.pools.add("energy", self.fx.basic_hits * self.pc.energy_on_hit)
+            self.fx.basic_dealt = self.fx.basic_hits = 0
         if self.fx.hits:
             self.sfx.play("hit")
             self.fx.hits = 0
@@ -2745,22 +2839,36 @@ class Game:
         return sum(max(0, getattr(t, "hp", 0)) for t in self.skill_targets())
 
     def energy_from_hits(self, before):
-        """Warrior / Archer: landing basic attacks fills the energy bar."""
+        """Warrior / Archer: a basic attack that lands fills the energy bar (per swing, not per damage)."""
         dealt = before - self.target_hp()
         if dealt > 0 and self.pc.energy_on_hit:
-            self.pc.pools.add("energy", dealt * self.pc.energy_on_hit)
+            self.pc.pools.add("energy", self.pc.energy_on_hit)
 
     def update_music(self, dt):
         p = self.surface.player
         ev = self.wilds.event
         near = bool(ev) and math.hypot(p.x - ev["x"], p.y - ev["y"]) < 700
         boss = bool(self.enc.boss_floor and self.enc.active == self.enc.boss_room)
-        self.music.play(pick_place(
+        place = pick_place(
             state=self.state, mode=self.mode, victory=self.victory, shop=self.shop is not None,
             raid=self.night.active, event_near=near, night=self.surface.daynight.night(),
             in_village=world_lore.region_at(p.x, p.y)[0] == "Oakwood Village",
-            family=family_for(self.floor_name), boss=boss))
+            family=family_for(self.floor_name), boss=boss)
+        # the Lich King plays his own music (audio package): the map's boss theme steps aside once it starts
+        manager = audio.get_manager()
+        singing = self.own_boss_music()
+        if singing and getattr(manager, "current_music", None):
+            place = "boss_own_music"                    # (no such track: the map music fades out)
+        elif self.boss_audio and not singing:
+            audio.stop_music(fade=1.2)                  # the fight is over (or left): his music fades out
+        self.boss_audio = singing
+        self.music.play(place)
         self.music.update(dt)
+
+    def own_boss_music(self):
+        """True while a boss that plays its own music is alive in the room the hero is fighting in."""
+        return (self.state == "playing" and self.mode == "dungeon"
+                and any(getattr(e, "audio_music", False) and e.hp > 0 for e in self.enc.enemies))
 
     def begin_game(self, new: bool = True, name: str | None = None, hero_class: str | None = None):
         self.state = "playing"
@@ -2795,7 +2903,13 @@ class Game:
 
     def autosave(self):
         self.save.pull_from(self.pc)
-        self.save.save()
+        if self.save.save() is False:
+            msg = "Could not save the game! (is the save folder read-only?)"
+            if self.mode == "dungeon":
+                self.toast(msg, (255, 120, 110), 4.0)
+            elif hasattr(self, "surface"):
+                self.surface.toast(msg, (255, 120, 110))
+            return
         self.has_save = True
 
     def toast(self, text, color=(240, 230, 200), life=3.0):
@@ -3006,7 +3120,7 @@ class Game:
             if kind == "boss":
                 self.juice.add_shake(0.7)
                 self.juice.hit_pause(0.12)
-            self.gain_xp(hp * tier * mult, x, y, self.interact.floaters)
+            self.gain_xp(max(1, round(combat.kill_xp(hp) * tier * mult)), x, y, self.interact.floaters)
             self.roll_loot(x, y, tier, kind if kind in self.DROP_CHANCE else "normal")
         enc.killed.clear()
         m = getattr(d, "mini", None)
@@ -3053,28 +3167,57 @@ class Game:
                         return x, y
         return d.spawn
 
-    def retry_room(self):
-        """After dying: reset only the room you died in and restart from the room before it."""
-        k = self.enc.retry_room()
-        if k is None:
-            self.change_floor(self.floor_name)
+    def respawn_point(self):
+        """The lit checkpoint nearest to where the hero fell on this floor, or None (-> Oakwood)."""
+        inter = getattr(self, "interact", None)
+        if inter is None or not hasattr(inter, "nearest_checkpoint"):
+            return None
+        return inter.nearest_checkpoint(self.player.x, self.player.y)
+
+    def respawn_after_death(self):
+        """After dying in a dungeon: the room you fell in resets. You rise at the nearest lit
+        checkpoint on this floor; with none lit, Merlin carries you back to Oakwood."""
+        cp = self.respawn_point()
+        self.enc.retry_room()                    # a boss stops its music; the room fights again later
+        self.death_t = 0.0
+        self.was_dead = False
+        if cp is None:
+            self.return_to_surface(dungeon_for(self.floor_name))
+            sw = self.surface
+            sw.player.x, sw.player.y = night_raid.WARD_CENTER[0] - 40, night_raid.WARD_CENTER[1] + 60
+            sw.player.facing = "down"
+            sm = getattr(sw, "merlin", None)
+            if sm is not None:
+                sm.x, sm.y = sw.player.x - 30, sw.player.y + 6
+                sm.say("No fire was lit to guide you back. Light the braziers next time.")
+            self.snap_camera()
+            sw.toast("%s fell in the dungeon... Merlin carried you home." % story.hero_name(), (255, 170, 150))
             return
         self.pc.reset()
-        self.was_dead = False
-        parent = getattr(self.dungeon, "parent", None)
-        target = parent[k] if parent else max(0, k - 1)
-        if target == 0:
-            x, y = self.dungeon.spawn
-        else:
-            r = self.dungeon.rooms[target]
-            x, y = self.safe_spot(r.centerx, r.centery)
+        x, y = self.safe_spot(cp["tx"], cp["ty"] + 1)
         self.player.place(x, y)
         self.snap_camera()
         self.fade, self.fade_dir = 1.0, -1
+        self.toast("You rise at the checkpoint.", (255, 200, 130))
+
+    def retry_room(self):
+        """Old name (the tester and older code call it)."""
+        self.respawn_after_death()
+
+    def death_tick(self, dt):
+        """The hero lies fallen for RESPAWN_DELAY seconds (or until R), then rises."""
+        if not self.pc.dead:
+            self.death_t = 0.0
+            return
+        self.death_t = getattr(self, "death_t", 0.0) + dt
+        if self.death_t >= RESPAWN_DELAY and self.fade_dir == 0:
+            self.respawn_after_death()
 
     def dash(self):
         if self.fade_dir != 0 or self.pc.dead:
             return
+        if getattr(self.hero(), "root_t", 0) > 0:
+            return                                          # held by a boss's hands
         if self.mode == "village" and self.surface.state != "play":
             return
         keys = pygame.key.get_pressed()
@@ -3105,6 +3248,7 @@ class Game:
         if not self.is_dungeon_unlocked(dungeon_for(floor_name)):
             return
         self.mode = "dungeon"
+        self.fall_t = 0.0                # (a fall in the overworld does not carry over)
         self.floor_name = floor_name
         cached = self.floors.get(floor_name)
         if cached:                      # back up the stairs: the floor is as you left it
@@ -3374,6 +3518,8 @@ class Game:
 
         self.motes.update(dt, dcx, dcy, t)
         self.motes.draw(self.screen, t)
+        if self.tester is not None:
+            self.tester.draw_hitboxes(self.screen, cx, cy)
         self.loot.draw(self.screen, cx, cy, t, hero=self.player)
         self.juice.draw_world(self.screen, cx, cy, t)
         self.fx.draw(self.screen, cx, cy, t, self.mid_font)        # skills glow through the dark
@@ -3486,6 +3632,29 @@ class Game:
             card.set_alpha(int(255 * min(1.0, life / 0.5)))
             scr.blit(card, (SCREEN_W // 2 - w // 2, y))
             y += h + 6
+        if self.pc.dead and self.dialog is None:
+            self.draw_death_card(scr)
+
+    def draw_death_card(self, scr):
+        """'You have fallen' and where the hero will rise."""
+        cp = self.respawn_point()
+        left = max(0.0, RESPAWN_DELAY - getattr(self, "death_t", 0.0))
+        line = ("[R]  Rise at the checkpoint" if cp is not None else "[R]  Return to Oakwood") + "  (%d)" % (left + 0.99)
+        sub = "The nearest lit checkpoint awaits." if cp is not None else "No checkpoint lit on this floor."
+        k = min(1.0, getattr(self, "death_t", 0.0) / 0.6)
+        title = self.mid_font.render("You have fallen", True, (255, 150, 140))
+        a = self.mid_font.render(line, True, (250, 240, 214))
+        b = self.small_font.render(sub, True, (200, 190, 180))
+        w = max(title.get_width(), a.get_width(), b.get_width()) + 48
+        h = title.get_height() + a.get_height() + b.get_height() + 40
+        card = blank(w, h)
+        draw_panel(card, card.get_rect(), (200, 80, 70), 230)
+        yy = 12
+        for img in (title, a, b):
+            card.blit(img, ((w - img.get_width()) // 2, yy))
+            yy += img.get_height() + 8
+        card.set_alpha(int(255 * k))
+        scr.blit(card, (SCREEN_W // 2 - w // 2, SCREEN_H // 2 - h // 2 - 40))
 
     def on_night_event(self, kind):
         sm = getattr(self.surface, "merlin", None)
@@ -3500,13 +3669,15 @@ class Game:
                 sm.say(random.choice(story.MERLIN_BARKS[kind]))
             self.autosave()
 
-    def village_xp(self, amount, x, y):
-        if amount < 30:                             # a monster (lairs, events and raids give more)
+    def village_xp(self, amount, x, y, kind="kill"):
+        """Overworld XP. kind "kill" = a monster died (puff, sound, small loot chance); "reward" = a lair,
+        an event or a raid was won (better loot)."""
+        if kind == "kill":
             self.juice.puff(x, y)
             self.sfx.play("enemy_die")
         self.gain_xp(amount, x, y, self.wilds.floaters)
         tier = self.save.stage + 1
-        self.roll_loot(x, y, tier, chance=0.5 if amount >= 30 else 0.05)    # lairs / events drop more
+        self.roll_loot(x, y, tier, chance=0.05 if kind == "kill" else 0.5)    # lairs / events drop more
 
     def village_survival(self, dt):
         """Out of combat the hero slowly heals; after a fall in the wilds, Merlin brings them home."""
@@ -3565,7 +3736,7 @@ class Game:
                 self.open_dialog(ev[1], after=self.autosave)
             elif kind == "save":
                 self.autosave()
-            elif kind == "heal":
+            elif kind in ("heal", "rest"):          # a healing font / resting at a checkpoint
                 self.pc.heal(self.pc.max_hp)
             elif kind == "potion":
                 if self.pc.add_potion():
@@ -3699,6 +3870,8 @@ class Game:
         click = event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
         confirm = key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE)
 
+        if self.tester is not None and self.state == "playing" and self.tester.handle_event(event):
+            return True                                  # F1 menu (tester mode)
         if self.state == "menu":
             result = self.front.handle_event(event)
             if result is None:
@@ -3779,7 +3952,8 @@ class Game:
             elif sw.state != "play" or self.fade_dir > 0:
                 pass
             elif key in self.keys["interact"]:
-                sw.interact()
+                if not self.pc.dead:
+                    sw.interact()
             elif key == pygame.K_m:
                 sw.show_map = not sw.show_map
             elif key in (pygame.K_h, pygame.K_p):
@@ -3811,14 +3985,16 @@ class Game:
                 else:
                     self.start_transition(next_floor(self.floor_name))
         elif key == pygame.K_q:
-            if not self.enc.locked and not self.pc.dead:
-                if self.floor_name in ("1-1", "2-1", "3-1") or minis.is_mini_floor(self.floor_name):
-                    self.return_to_surface(dungeon_for(self.floor_name))
-                else:
-                    self.start_transition(previous_floor(self.floor_name), True)
+            # a dungeon is left by finishing it, or from a lit checkpoint (no walking out mid-floor)
+            if (not self.enc.locked and not self.pc.dead and self.fade_dir == 0
+                    and self.interact.near_lit_checkpoint(self.player)):
+                self.toast("You leave the dungeon and head back to Oakwood.", (255, 200, 130))
+                self.autosave()
+                self.start_surface_return(dungeon_for(self.floor_name))
         elif key == pygame.K_r:
             if self.pc.dead:
-                self.retry_room()
+                if self.fade_dir == 0:
+                    self.respawn_after_death()
             elif not self.enc.locked:
                 self.player.place(*self.dungeon.spawn)
         elif key in self.keys["attack"]:
@@ -3859,6 +4035,7 @@ class Game:
         while running:
             dt = min(self.clock.tick(self.settings.frame_cap()) / 1000.0, 0.05)    # 0 = no limit
             t += dt
+            self.check_config()                     # a saved config file applies right away
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -3908,6 +4085,8 @@ class Game:
                         after()
             elif self.shop is not None or self.journal is not None or self.sheet is not None:
                 pass
+            elif self.tester is not None and self.tester.open:
+                pass                                     # the tester menu stops the game
             elif playing and self.juice.paused():
                 pass                                     # hit-pause: the world holds its breath
             elif playing:
@@ -3941,12 +4120,20 @@ class Game:
                         self.enc.update(dt, self.player, self.pc)
                     self.update_skills(dt)
                     self.interact.update(dt, self.player, self.pc, self.enc)
+                    self.death_tick(dt)
                     self.handle_interact_events()
                     self.after_update()
 
             for name in self.enc.sound_queue:
                 self.sfx.play(name)
             self.enc.sound_queue.clear()
+            if self.mode == "dungeon":
+                for e in self.enc.enemies:
+                    if hasattr(e, "set_volume"):                # the Minotaur's own soundboard follows the slider
+                        e.set_volume(self.settings.effective_volume("sfx"))
+            audio.update(dt)                                    # fades of the bosses' music and loops
+            if self.tester is not None:
+                self.tester.update(dt)
             goblins = (playing and self.mode == "dungeon" and not self.pc.dead and self.enc.locked
                        and any(getattr(e, "skin", None) in GOBLIN_SKINS for e in self.enc.enemies))
             self.sfx.ambience("goblin_ambience", goblins)     # their chatter while goblins hold the room
@@ -3992,6 +4179,8 @@ class Game:
                 self.draw_victory(t)
             elif self.paused:
                 self.draw_pause()
+            if self.tester is not None:
+                self.tester.draw(self.screen)
             self.draw_fps()
             self.display.present()
 

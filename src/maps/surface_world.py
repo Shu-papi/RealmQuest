@@ -37,6 +37,7 @@ try:
     from . import wilds as wilds_mod
     from . import story
     from .save_state import level_progress
+    from .dash_fx import DashTrail
 except ImportError:
     import village
     import world_lore
@@ -44,6 +45,7 @@ except ImportError:
     import wilds as wilds_mod
     import story
     from save_state import level_progress
+    from dash_fx import DashTrail
 
 # --------------------------------------------------------------------------- #
 #  CONFIG - tweak freely
@@ -57,12 +59,12 @@ INTERACT_DIST = 95
 # "requires" = id of the dungeon that must be cleared first (None = always open).
 # Strict chain, matching the story: Goblin -> Berserker -> Lich King.
 DUNGEONS = [
-    dict(id="goblin", name="Goblin Dungeon", level="Requires Lv 3",
-         pos=(780, 1030), color=(70, 235, 120), requires=None, min_level=3),
-    dict(id="berserker", name="Berserker Warriors Dungeon", level="Requires Lv 7",
-         pos=(2060, 930), color=(255, 85, 55), requires="goblin", min_level=7),
-    dict(id="lich", name="Lich King Dungeon", level="Requires Lv 12",
-         pos=(1400, 330), color=(175, 95, 255), requires="berserker", min_level=12),
+    dict(id="goblin", name="Goblin Dungeon", level="Lv 5-10",
+         pos=(780, 1030), color=(70, 235, 120), requires=None, min_level=5),
+    dict(id="berserker", name="Berserker Warriors Dungeon", level="Lv 15-20",
+         pos=(2060, 930), color=(255, 85, 55), requires="goblin", min_level=15),
+    dict(id="lich", name="Lich King Dungeon", level="Lv 20-30",
+         pos=(1400, 330), color=(175, 95, 255), requires="berserker", min_level=20),
 ]
 MINIS = minis.MINIS                     # the six replayable mini dungeons
 DUNGEON_BY_ID = {d["id"]: d for d in DUNGEONS + MINIS}
@@ -672,6 +674,17 @@ class Player:
         self.set_look(look)
         self.sort_y = y
         self.rect = pygame.Rect(0, 0, 36, 48)
+        self.trail = DashTrail()             # afterimages and speed lines while dashing (dash_fx.py)
+        self.root_t = 0.0                    # held by a treant's roots (no walking, no dashing)
+        self.slow_t = 0.0                    # half speed
+
+    def afflict(self, name, seconds):
+        """A monster's status effect: 'root' or 'slow' for `seconds` (same as the dungeon Player)."""
+        if name == "root":
+            self.root_t = max(self.root_t, seconds)
+            self.dash_t = 0.0
+        elif name == "slow":
+            self.slow_t = max(self.slow_t, seconds)
 
     def set_look(self, look):
         """The hero's class look (hero_warrior / hero_mage / hero_archer): the team's
@@ -694,6 +707,7 @@ class Player:
         sh = pygame.Surface((30, 12), pygame.SRCALPHA)
         pygame.draw.ellipse(sh, (0, 0, 0, 90), (0, 0, 30, 12))
         scr.blit(sh, (X - 15, Y - 8))
+        self.trail.draw(scr, self.sprite, self.x, self.y, self.flip, self.dash_t > 0, cx, cy, self.dash_dir)
         # the art faces left / right only: walking up or down keeps the last side
         self.sprite.set_dead(self.dead)
         self.sprite.draw(scr, X, Y + 2, moving=self.moving and not self.dead, left=self.flip)
@@ -1515,6 +1529,13 @@ class SurfaceWorld:
         if getattr(self, "frozen", False):        # the hero has fallen: no walking
             dx = dy = 0
         speed = PLAYER_SPEED * p.speed_k
+        p.root_t = max(0.0, p.root_t - dt)
+        p.slow_t = max(0.0, p.slow_t - dt)
+        if p.slow_t > 0:
+            speed *= 0.5
+        if p.root_t > 0:                          # held by roots: the keys and a dash do nothing
+            dx = dy = 0
+            p.dash_t = 0.0
         if p.dash_t > 0:                          # a dash overrides the keys for a moment
             p.dash_t = max(0.0, p.dash_t - dt)
             dx, dy = p.dash_dir
@@ -1977,13 +1998,7 @@ class SurfaceWorld:
         # minimap
         if self.show_map:
             self.draw_minimap(camx, camy)
-        # bottom hint bar
-        bar = pygame.Surface((SCREEN_W, 34), pygame.SRCALPHA)
-        bar.fill((6, 10, 10, 200))
-        scr.blit(bar, (0, SCREEN_H - 34))
-        hint = getattr(self, "controls_hint", None) or \
-            "WASD: move  |  Space: attack  |  E: talk / use  |  Tab: journal  |  H: potion  |  M: map  |  ESC: pause"
-        self.text(scr, hint, self.f_small, (235, 235, 225), (SCREEN_W // 2, SCREEN_H - 17), "center")
+        # (no keybind bar at the bottom: the controls are listed in README.txt)
 
     def _wrap(self, text, font, width):
         text = story.named(text)

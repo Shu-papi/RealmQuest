@@ -1,0 +1,245 @@
+# ==========================================================================
+#  RealmQuest  -  THE LICH KING
+#  The last boss (Lich King Dungeon, floor 3-3). His skeletons' stats are in config/monsters/skeleton_*.toml.
+#  [dungeon] at the bottom converts him to the dungeon's scale (the hero has ~40 HP and a 2-damage sword).
+#
+#  Change a number and save (no restart). Delete a line and the game uses its built-in default.
+#  A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the player loses.
+# ==========================================================================
+
+
+# ==========================================================================
+# WHO HE IS
+# ==========================================================================
+name = "Lich King"                        # Shown above his health bar.
+max_hp = 10000                            # Health pool. Phase 2 starts at phase_2_at of this, phase 3 at phase_3_at.
+radius = 44                               # His hit circle (pixels). Bigger = easier to hit.
+intro = "Cold air fills the crypt. The Lich King rises from his throne."  # Line shown when the fight starts.
+death_line = "The Lich King shatters into dust. 'Death is only the beginning...'"  # Line shown when he dies.
+loot = ["Crown of Bones", "Staff of Shadows", "150 Gold"]  # Items he drops, as a list of text.
+
+
+# ==========================================================================
+# PHASES AND TIMING (seconds)
+# ==========================================================================
+[timing]
+phase_2_at = 0.5                          # Phase 2 begins when his HP drops to this fraction (0.5 = 50%).
+phase_3_at = 0.25                         # Phase 3 (Last Stand) begins at this fraction.
+intro_time = 2.0                          # He rises from the floor and can't be hurt for this long.
+transition_time = 1.8                     # The roar between phases (can't be hurt).
+teleport_time = 0.35                      # Fade-out time of a teleport (and fade-in again).
+dying_time = 2.0                          # Length of his death animation.
+aim_lock = 0.3                            # Volley and Barrage stop tracking you this long before firing. Bigger = easier to dodge.
+combo_pause = 1.00                        # Pause between the attacks of one chain. Smaller = more overwhelming.
+
+
+# ==========================================================================
+# THE PLAYER'S WINDOW (after every chain he is exhausted)
+# ==========================================================================
+[window]
+exhaust_bonus = 1.5                       # Damage multiplier while he is exhausted or stunned (1.5 = +50%).
+
+
+# ==========================================================================
+# PHASE 3: THE SOUL WARD (invulnerable while any summon lives)
+# ==========================================================================
+[ward]
+shield_break_window = 2.0                 # Seconds he is STUNNED (and takes bonus damage) after the last summon dies.
+rearm_after = 7.0                         # Seconds with no army before he calls a fresh wave.
+wave_raise_budget = 2                     # Dead an acolyte may raise per wave (so the ward can't last forever).
+
+
+# ==========================================================================
+# ATTACK DAMAGE (health the player loses per hit)
+# ==========================================================================
+[damage]
+volley_damage = 70                        # One bolt of the Shadow Volley.
+drain_damage = 85                         # Life Drain circle (it also heals him; see drain_heal in the phases).
+nova_damage = 170                         # One bone shard of the Bone Nova.
+grasp_damage = 40                         # A Grasping Hand.
+barrage_damage = 25                       # One bolt of the Soul Barrage.
+rain_damage = 35                          # One Soul Rain circle.
+
+
+# ==========================================================================
+# ATTACK SHAPES (pixels / counts)
+# ==========================================================================
+[shapes]
+drain_radius = 85                         # Size of a Life Drain circle.
+grasp_radius = 42                         # Size of a Grasping Hand.
+volley_spread_deg = 16.0                  # Angle between the bolts of a Shadow Volley (degrees).
+nova_gap_shards = 3                       # How many shards wide the Bone Nova's safe gap is. Smaller = harder.
+nova_second_ring = 0.55                   # Seconds between the two rings of the phase 3 nova.
+rain_stagger = 0.1                        # Seconds between one Soul Rain circle bursting and the next.
+grasp_stagger = 0.12                      # Seconds between one Grasping Hand bursting and the next.
+
+
+# ==========================================================================
+# COLOURS (red, green, blue: 0-255)
+# ==========================================================================
+[colors]
+exhaust_glow = [255, 214, 120]            # 'Hit me now' gold.
+shield = [176, 150, 255]                  # The Soul Ward violet.
+shield_hot = [236, 226, 255]              # The Soul Ward highlight.
+
+
+[colors.attack_glow]   # The glow colour of each attack's wind-up.
+volley = [239, 159, 39]
+drain = [151, 196, 89]
+summon = [212, 83, 126]
+nova = [110, 200, 255]
+grasp = [176, 110, 235]
+barrage = [255, 110, 90]
+rain = [90, 220, 190]
+
+
+# ==========================================================================
+# PHASE 1 (100% - phase_2_at)
+# ==========================================================================
+[phase1]
+speed = 80.0                              # How fast he walks after you (pixels per second).
+idle = 0.8                                # Pause before a new chain starts (seconds).
+recover = 0.45                            # Pause after each attack (seconds).
+teleport = 0.0                            # Chance (0-1) that he teleports after a chain.
+combo = 1                                 # Extra attacks chained after the first. Chain length = combo + 1.
+exhaust = 2.0                             # Seconds he stands open after a chain (takes exhaust_bonus damage).
+minion_cap = 0                            # Army size he can control (a brute counts as 2). 0 = he never summons.
+summon_picks = 0                          # How many minions one Summon calls.
+volley_windup = 0.8                       # Shadow Volley wind-up (seconds). Smaller = less warning.
+bolts = 5                                 # Bolts in a Shadow Volley.
+bolt_speed = 300.0                        # Volley bolt speed (pixels per second).
+drain_windup = 1.0                        # Life Drain wind-up.
+drain_circles = 1                         # Life Drain circles.
+drain_heal = 45                           # Health he heals when a Drain circle hits you.
+rain_windup = 1.0                         # Soul Rain wind-up.
+rain_circles = 4                          # Soul Rain circles.
+rain_radius = 58                          # Size of each rain circle.
+summon_windup = 1.2                       # Summon wind-up.
+nova_windup = 1.1                         # Bone Nova wind-up.
+nova_rings = 1                            # Rings in a Bone Nova (2 = the phase 3 double nova).
+nova_shards = 16                          # Shards per ring. More = smaller gaps.
+nova_speed = 220.0                        # Shard speed.
+grasp_windup = 1.1                        # Grasping Hands wind-up.
+grasp_hands = 3                           # Hands per attack (one is always under you).
+grasp_root = 0.8                          # Seconds a hand roots you in place.
+barrage_windup = 1.0                      # Soul Barrage wind-up.
+barrage_bolts = 12                        # Bolts in a barrage.
+barrage_speed = 320.0                     # Barrage bolt speed.
+barrage_sweep = 60                        # Width of the barrage wedge in degrees. Wider = less safe space.
+barrage_interval = 0.1                    # Seconds between barrage bolts. Smaller = spammier.
+
+
+# ==========================================================================
+# PHASE 2 (phase_2_at - phase_3_at)
+# ==========================================================================
+[phase2]
+speed = 120.0                             # How fast he walks after you (pixels per second).
+idle = 0.45                               # Pause before a new chain starts (seconds).
+recover = 0.3                             # Pause after each attack (seconds).
+teleport = 0.5                            # Chance (0-1) that he teleports after a chain.
+combo = 2                                 # Extra attacks chained after the first. Chain length = combo + 1.
+exhaust = 2.4                             # Seconds he stands open after a chain (takes exhaust_bonus damage).
+minion_cap = 8                            # Army size he can control (a brute counts as 2). 0 = he never summons.
+summon_picks = 3                          # How many minions one Summon calls.
+volley_windup = 0.55                      # Shadow Volley wind-up (seconds). Smaller = less warning.
+bolts = 7                                 # Bolts in a Shadow Volley.
+bolt_speed = 350.0                        # Volley bolt speed (pixels per second).
+drain_windup = 0.85                       # Life Drain wind-up.
+drain_circles = 2                         # Life Drain circles.
+drain_heal = 50                           # Health he heals when a Drain circle hits you.
+rain_windup = 0.8                         # Soul Rain wind-up.
+rain_circles = 7                          # Soul Rain circles.
+rain_radius = 58                          # Size of each rain circle.
+summon_windup = 1.1                       # Summon wind-up.
+nova_windup = 0.95                        # Bone Nova wind-up.
+nova_rings = 1                            # Rings in a Bone Nova (2 = the phase 3 double nova).
+nova_shards = 20                          # Shards per ring. More = smaller gaps.
+nova_speed = 235.0                        # Shard speed.
+grasp_windup = 0.95                       # Grasping Hands wind-up.
+grasp_hands = 5                           # Hands per attack (one is always under you).
+grasp_root = 1.0                          # Seconds a hand roots you in place.
+barrage_windup = 0.8                      # Soul Barrage wind-up.
+barrage_bolts = 16                        # Bolts in a barrage.
+barrage_speed = 340.0                     # Barrage bolt speed.
+barrage_sweep = 70                        # Width of the barrage wedge in degrees. Wider = less safe space.
+barrage_interval = 0.09                   # Seconds between barrage bolts. Smaller = spammier.
+
+
+# ==========================================================================
+# PHASE 3: LAST STAND (below phase_3_at)
+# ==========================================================================
+[phase3]
+speed = 165.0                             # How fast he walks after you (pixels per second).
+idle = 0.4                                # Pause before a new chain starts (seconds).
+recover = 0.2                             # Pause after each attack (seconds).
+teleport = 0.6                            # Chance (0-1) that he teleports after a chain.
+combo = 3                                 # Extra attacks chained after the first. Chain length = combo + 1.
+exhaust = 2.6                             # Seconds he stands open after a chain (takes exhaust_bonus damage).
+minion_cap = 6                            # Army size he can control (a brute counts as 2). 0 = he never summons.
+summon_picks = 4                          # How many minions one Summon calls.
+volley_windup = 0.5                       # Shadow Volley wind-up (seconds). Smaller = less warning.
+bolts = 9                                 # Bolts in a Shadow Volley.
+bolt_speed = 390.0                        # Volley bolt speed (pixels per second).
+drain_windup = 0.8                        # Life Drain wind-up.
+drain_circles = 3                         # Life Drain circles.
+drain_heal = 30                           # Health he heals when a Drain circle hits you.
+rain_windup = 0.65                        # Soul Rain wind-up.
+rain_circles = 10                         # Soul Rain circles.
+rain_radius = 58                          # Size of each rain circle.
+summon_windup = 0.9                       # Summon wind-up.
+nova_windup = 0.9                         # Bone Nova wind-up.
+nova_rings = 2                            # Rings in a Bone Nova (2 = the phase 3 double nova).
+nova_shards = 22                          # Shards per ring. More = smaller gaps.
+nova_speed = 265.0                        # Shard speed.
+grasp_windup = 0.9                        # Grasping Hands wind-up.
+grasp_hands = 8                           # Hands per attack (one is always under you).
+grasp_root = 1.3                          # Seconds a hand roots you in place.
+barrage_windup = 0.6                      # Soul Barrage wind-up.
+barrage_bolts = 20                        # Bolts in a barrage.
+barrage_speed = 370.0                     # Barrage bolt speed.
+barrage_sweep = 90                        # Width of the barrage wedge in degrees. Wider = less safe space.
+barrage_interval = 0.07                   # Seconds between barrage bolts. Smaller = spammier.
+
+
+# ==========================================================================
+# HIS ARMY: which minions he calls (and how often)
+# ==========================================================================
+[summons]
+tier = "undying"                          # Which [tiers.*] his minions use (health / damage / speed multipliers).
+
+
+[summons.skeleton_warrior]
+cost = 1                                  # Army budget it uses (he controls minion_cap worth at once).
+weight = 5.0                              # How likely he is to call it (higher = more often).
+limit = 6                                 # Most of this kind alive at once.
+
+
+[summons.skeleton_archer]
+cost = 1                                  # Army budget it uses (he controls minion_cap worth at once).
+weight = 3.0                              # How likely he is to call it (higher = more often).
+limit = 3                                 # Most of this kind alive at once.
+
+
+[summons.skeleton_acolyte]
+cost = 1                                  # Army budget it uses (he controls minion_cap worth at once).
+weight = 2.0                              # How likely he is to call it (higher = more often).
+limit = 2                                 # Most of this kind alive at once.
+
+
+[summons.skeleton_brute]
+cost = 2                                  # Army budget it uses (he controls minion_cap worth at once).
+weight = 1.5                              # How likely he is to call it (higher = more often).
+limit = 2                                 # Most of this kind alive at once.
+
+
+# In the dungeon: name = his health-bar name, hit_radius = how close a sword swing must be, color = placeholder.
+# hp_power and damage_k are OPTIONAL scale knobs: 1 = the numbers in this file apply exactly as typed (the bar
+# shows max_hp, every attack takes its damage off the hero before his armour). hp_power = 15 means a sword
+# hit of 2 does 30 to him and the bar shows his health / 15; damage_k = 0.5 halves every hit on the hero.
+[dungeon]
+name = "The Lich King"
+hp_power = 1
+damage_k = 1
+hit_radius = 40
+color = [132, 92, 190]

@@ -1,0 +1,15 @@
+# ============================================================================================================
+#  RealmQuest  -  SLIME
+#  Goblin Dungeon regular (red, blue or green): bounces at the hero.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Slime"                            # Name shown on its health bar.
+hp = 280                                  # Health (the hero's sword does sword_damage + gear per hit, see hero.toml).
+speed = 76                                # Walking speed (pixels per second).
+damage = 10                               # Health the hero loses per hit (before armour).
+color = [110, 190, 110]                   # Placeholder colour (only used if the sprite can't load): [red, green, blue].
+radius = 13                               # Hit circle (pixels). Bigger = easier to hit.

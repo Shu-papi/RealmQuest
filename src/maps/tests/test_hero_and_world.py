@@ -58,9 +58,10 @@ class HeroSave(unittest.TestCase):
 
     def test_class_sets_base_hp(self):
         s = save_state.SaveState()
-        for cls, hp in (("warrior", 48), ("mage", 34), ("archer", 40)):
+        from skills import classes
+        for cls in ("warrior", "mage", "archer"):
             s.reset("X", cls)
-            self.assertEqual(s.max_hp, hp)
+            self.assertEqual(s.max_hp, classes.stats(cls)["hp"])
 
 
 class StoryName(unittest.TestCase):
@@ -88,7 +89,7 @@ class HeroCombat(unittest.TestCase):
         self.assertEqual(pc.pools.order, ["mana", "stamina"])
         pc.apply_class("warrior")
         self.assertEqual(pc.pools.order, ["stamina", "energy"])
-        self.assertEqual(pc.sword_dmg, combat.SWORD_DMG + 1)
+        self.assertEqual(pc.sword_dmg, combat.SWORD_DMG + combat.BONUS_SCALE * 1)   # warrior dmg_bonus 1
         pc.apply_class("archer")
         self.assertLess(pc.swing_cd, combat.SWORD_COOLDOWN)
 
@@ -172,7 +173,7 @@ def floor_dungeon(name):
 
 
 class MinionPlacement(unittest.TestCase):
-    """Goblin sprites only in the Goblin Dungeon family; Berserker / Lich floors untouched."""
+    """Each dungeon family wears its own monsters: goblins, orcs + treants, the Lich King's skeletons."""
 
     def start(self, floor, role):
         d = floor_dungeon(floor)
@@ -239,11 +240,22 @@ class MinionPlacement(unittest.TestCase):
         enc = self.start("11-1", "lair")
         self.assertIn("goblin_general", {e.skin for e in enc.enemies})
 
-    def test_berserker_and_lich_floors_have_none(self):
-        for floor, role in (("2-1", "guard"), ("3-2", "miniboss"), ("13-1", "lair"), ("15-1", "lair")):
+    def test_berserker_floors_wear_orc_and_treant_sprites(self):
+        from monsters import game_sprites
+        allowed = {"orc_warrior", "orc_shaman", "treant", "orc_warlord"}
+        for floor, role in (("2-1", "guard"), ("13-1", "lair")):
             with self.subTest(floor=floor):
                 enc = self.start(floor, role)
-                self.assertTrue(all(e.skin is None for e in enc.enemies))
+                skins = {e.skin for e in enc.enemies}
+                self.assertTrue(skins <= allowed, skins)
+                self.assertTrue(skins <= set(game_sprites.SKINS))
+
+    def test_lich_floors_hold_the_lich_kings_skeletons(self):
+        from monsters.in_game import SkeletonEnemy
+        for floor, role in (("3-2", "miniboss"), ("15-1", "lair")):
+            with self.subTest(floor=floor):
+                enc = self.start(floor, role)
+                self.assertTrue(all(isinstance(e, SkeletonEnemy) for e in enc.enemies))
 
     def test_goblin_king_is_the_sprite_boss(self):
         from bosses.goblin_king.in_game import GoblinKingEnemy
@@ -272,25 +284,28 @@ class MinionPlacement(unittest.TestCase):
 
 
 class OverworldMonsters(unittest.TestCase):
-    def test_slime_and_boar_packs_wear_sprites(self):
+    def test_every_wild_kind_wears_a_sprite(self):
         import random
         rng = random.Random(1)
-        for kind, allowed in (("slime", {"slime_red", "slime_blue", "slime_green"}), ("boar", {"wild_boar"})):
-            m = wilds.Mob(kind, 0, 0, (0, 0), 50, rng)
-            self.assertIn(m.skin, allowed)
-        for kind in ("goblin", "bandit", "stalker", "wraith"):
-            self.assertIsNone(wilds.Mob(kind, 0, 0, (0, 0), 50, rng).skin, kind)
+        w = types.SimpleNamespace(bolts=[], hazards=[])
+        for kind in wilds.KINDS:
+            m = wilds.make_wild(kind, 0, 0, (0, 0), 50, rng, w)
+            self.assertTrue(m.skin, kind + " has no placeholder circle")
 
-    def test_no_wolves_left(self):
-        self.assertNotIn("wolf", wilds.MOBS)
-        self.assertTrue(all(k != "wolf" for k, *_ in wilds.PACKS))
+    def test_no_wolves_or_placeholders_left(self):
+        rosters = {k for k, *_ in wilds.PACKS}
+        self.assertNotIn("wolf", rosters)
+        for gone in ("goblin", "bandit", "stalker", "wraith", "boar"):
+            self.assertNotIn(gone, rosters)
+        self.assertEqual(set(rosters), set(wilds.ROSTERS))
 
-    def test_goblin_raiders_wear_goblin_sprites(self):
+    def test_raiders_wear_their_dungeons_sprites(self):
         import random
         rng = random.Random(3)
         skins = {night_raid.RaidMonster("goblin", night_raid.PATHS["goblin"], rng).skin for _ in range(20)}
         self.assertEqual(skins, {"goblin_shaman", "giant_boar"})
-        self.assertIsNone(night_raid.RaidMonster("berserker", night_raid.PATHS["berserker"], rng).skin)
+        skins = {night_raid.RaidMonster("berserker", night_raid.PATHS["berserker"], rng).skin for _ in range(20)}
+        self.assertEqual(skins, {"orc_warrior", "treant"})
 
     def test_stun_stops_and_slow_slows(self):
         e = combat.Enemy(0, 0, "x", 10, 100, 1, (0, 0, 0))

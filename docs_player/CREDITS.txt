@@ -1,0 +1,28 @@
+REALMQUEST - CREDITS
+====================
+
+Made by the RealmQuest team.
+
+Art: the Knight, Kendi the Mage and the Elf Archer, the bosses and monsters - the RealmQuest team.
+Generated sound effects: made in code by the team (the game builds them at start-up).
+Engine: pygame-ce (LGPL), Python (PSF licence).
+
+Fonts (SIL Open Font License 1.1, licence files in assets/ui/fonts/):
+  Press Start 2P - Copyright 2012 The Press Start 2P Project Authors
+  Silkscreen     - Copyright 2001 The Silkscreen Project Authors
+  Jersey 10      - Copyright 2023 The Soft Type Project Authors
+
+------------------------------------------------------------------------------------------
+TODO BEFORE ANY PUBLIC RELEASE - these files have no recorded author or licence yet.
+This build is for private testing only until each line below is filled in (or the file removed).
+------------------------------------------------------------------------------------------
+Music (audio/music/):
+  BGM_Snow_Theme_Loop.mp3                       author: ?   licence: ?   source: ?
+  Fantasy Menu Theme.mp3                        author: ?   licence: ?   source: ?
+  RPG For Wenches, Ale, and LOOT!!mp3.mp3       author: ?   licence: ?   source: ?
+  Ruins Of Empire.mp3                           author: ?   licence: ?   source: ?
+  battleThemeA.mp3                              author: ?   licence: ?   source: ?
+  in_search_of_the_philosophers_stone.mp3       author: ?   licence: ?   source: ?
+  medieval.mp3                                  author: ?   licence: ?   source: ?
+  mysterious_calm.mp3                           author: ?   licence: ?   source: ?
+Recorded sound effects (assets/sfx/*.mp3): source and licence: ?

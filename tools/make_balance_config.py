@@ -1,13 +1,14 @@
 """
-make_balance_config.py - (re)writes config/balance.toml from the numbers that are in the code.
+make_balance_config.py - writes ONE file with every Lich King, skeleton and tier setting at its code default:
+a difficulty PRESET (the game normally reads config/, one file per boss / monster / class).
 
-    python tools/make_balance_config.py              write config/balance.toml  (asks before overwriting!)
+    python tools/make_balance_config.py              write config/presets/lich_and_skeletons.toml (asks first)
     python tools/make_balance_config.py --stdout     just print it
     python tools/make_balance_config.py --force      overwrite without asking
 
-You only need this when a developer ADDS a setting in the code (so it shows up in the file with its
-description), or when you want to reset the config file to the defaults. Players and designers just edit
-config/balance.toml by hand.
+Copy the preset, change numbers, and play with it:   REALMQUEST_BALANCE=config/presets/<file>.toml
+(the other bosses, monsters and classes then use their code defaults). The per-thing files in config/ are
+written by tools/make_config_files.py.
 """
 import json
 import os
@@ -229,7 +230,7 @@ def build():
     L = ["""# ==========================================================================
 #  RealmQuest  -  BALANCE CONFIG   (the Lich King, the minions, everything)
 # ==========================================================================
-#  Change a number, save, restart the game. That's it.
+#  Change a number and save (no restart). That's it.
 #
 #   * Lines starting with # are notes. Anything after a # on a line is a note too.
 #   * Keep the format:   name = value       (text goes in "quotes", lists in [brackets])
@@ -310,7 +311,7 @@ def main(argv):
     if "--stdout" in argv:
         sys.stdout.write(text)
         return 0
-    path = os.path.join(REPO, "config", "balance.toml")
+    path = os.path.join(REPO, "config", "presets", "lich_and_skeletons.toml")
     if os.path.exists(path) and "--force" not in argv:
         if input(f"{path} exists and will be overwritten (your edits are lost). Continue? [y/N] ").lower() != "y":
             print("Cancelled.")

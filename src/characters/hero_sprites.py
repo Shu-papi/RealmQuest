@@ -54,6 +54,8 @@ def _module(name, path):
     """Import a teammate's file by path (their folders are not Python packages)."""
     if name in sys.modules:
         return sys.modules[name]
+    if not Path(path).exists():                 # the built game ships these files compiled (.pyc), not as source
+        path = Path(path).with_suffix(".pyc")
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod             # dataclasses look their module up while it loads

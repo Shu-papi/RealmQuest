@@ -41,8 +41,18 @@ MOB_SKINS = ("slime_red", "slime_blue", "slime_green", "wild_boar", "goblin_sham
 MINION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                           "assets", "monsters", "goblin_minion")
 MINION_PIXEL = 2.5            # on-screen size of one art pixel for the goblin minion
-SHEET_SKINS = ("goblin_minion",)
-SKINS = MOB_SKINS + tuple(ARMY_SCALE) + SHEET_SKINS
+BERSERKER_DIR = os.path.join(os.path.dirname(MINION_DIR), "berserker")
+# One row of frames drawn FACING LEFT + a json listing the animations (goblin_config.json's format):
+#   key -> (folder, config file, on-screen size of one art pixel)
+SHEET_SKINS = {
+    "goblin_minion": (MINION_DIR, "goblin_config.json", MINION_PIXEL),
+    # the Berserker Dungeon (made by tools/make_berserker_sprites.py)
+    "orc_warrior": (os.path.join(BERSERKER_DIR, "orc_warrior"), "config.json", 2.5),
+    "orc_shaman": (os.path.join(BERSERKER_DIR, "orc_shaman"), "config.json", 2.5),
+    "orc_warlord": (os.path.join(BERSERKER_DIR, "orc_warlord"), "config.json", 2.5),
+    "treant": (os.path.join(BERSERKER_DIR, "treant"), "config.json", 2.5),
+}
+SKINS = MOB_SKINS + tuple(ARMY_SCALE) + tuple(SHEET_SKINS)
 ATTACK_CLIP = {"goblin_shaman": "fireball"}     # which attack sheet a skin plays
 EXTRA_CLIPS = {"goblin_shaman": ("barrier",)}   # more one-shot casts (enemy.attack_clip picks one)
 
@@ -119,24 +129,37 @@ def _army_skin(key):
 
 def minion_config():
     """assets/monsters/goblin_minion/goblin_config.json (frames, anchor, animation timings)."""
-    with open(os.path.join(MINION_DIR, "goblin_config.json"), "r") as f:
+    return sheet_config("goblin_minion")
+
+
+def sheet_config(key):
+    """The json of a SHEET_SKINS skin (frames, anchor, animation timings, hit frames)."""
+    folder, name, _k = SHEET_SKINS[key]
+    with open(os.path.join(folder, name), "r") as f:
         return json.load(f)
 
 
+def clip_times(key, clip="attack"):
+    """(seconds until the clip's hit_frame, whole clip length) of a SHEET_SKINS skin's clip."""
+    a = sheet_config(key)["animations"][clip]
+    ms = a["durations"]
+    return sum(ms[:a.get("hit_frame", 0)]) / 1000.0, sum(ms) / 1000.0
+
+
 def _minion_skin(key):
-    """The goblin minion: one row of frames drawn FACING LEFT, animations listed in the json."""
-    cfg = minion_config()
+    """A one-row sheet drawn FACING LEFT (the goblin minion, the orcs, the treant): every animation in its json."""
+    cfg = sheet_config(key)
+    folder, _name, k = SHEET_SKINS[key]
     sp = cfg["sprite"]
     fw, fh = sp["frame_width"], sp["frame_height"]
-    sheet = pygame.image.load(os.path.join(MINION_DIR, sp["sheet"])).convert_alpha()
-    k = MINION_PIXEL
+    sheet = pygame.image.load(os.path.join(folder, sp["sheet"])).convert_alpha()
     size = (int(round(fw * k)), int(round(fh * k)))
     cells = [pygame.transform.scale(sheet.subsurface(pygame.Rect(c * fw, 0, fw, fh)), size)
              for c in range(sheet.get_width() // fw)]
     ax, ay = sp["anchor"]
     anchor = {1: (fw - 1 - ax) * k, -1: ax * k}           # right-facing frames are the flipped ones
     out = {}
-    for state in ("idle", "walk", "attack"):
+    for state in cfg["animations"]:                        # idle, walk, attack (+ casts like "cast")
         a = cfg["animations"][state]
         left = [cells[i] for i in a["frames"]]
         anim = _Anim([pygame.transform.flip(f, True, False) for f in left], anchor, ay * k,

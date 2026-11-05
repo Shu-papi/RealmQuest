@@ -34,7 +34,7 @@ import math
 import pygame
 try:
     import audio                                             # src/ is on sys.path (silent until the game calls audio.init())
-    import balance                                           # (reads config/balance.toml)
+    import balance                                           # (reads config/bosses/lich_king.toml)
 except ImportError:                                          # run as src.bosses
     from src import audio, balance
 from ..base_boss import Boss
@@ -56,7 +56,7 @@ WAVE_RAISE_BUDGET = 2             # phase 3: dead an acolyte may raise per wave 
 SHIELD = (176, 150, 255)          # the Soul Ward colour: a cold violet nothing else in the fight uses
 SHIELD_HOT = (236, 226, 255)
 
-# ALL OF THE NUMBERS BELOW ARE DEFAULTS. config/balance.toml overrides them (see src/balance.py), so tune
+# ALL OF THE NUMBERS BELOW ARE DEFAULTS. config/bosses/lich_king.toml overrides them (see src/balance.py), so tune
 # the boss THERE, not here. (Add a new setting? Add its name to TUNABLE below and to tools/make_balance_config.py.)
 BOSS_NAME = "Lich King"
 BOSS_RADIUS = 44                  # his hit circle
@@ -142,7 +142,7 @@ ATTACK_GLOW = {
 }
 EXHAUST_GLOW = (255, 214, 120)    # the "hit me now" colour: a warm gold nothing else in the fight uses
 
-# every setting config/balance.toml may change (the name in the file is this, in lower case)
+# every setting config/bosses/lich_king.toml may change (the name in the file is this, in lower case)
 TUNABLE = (
     "BOSS_NAME", "BOSS_RADIUS", "BOSS_INTRO", "BOSS_DEATH_LINE", "BOSS_LOOT", "BOSS_MAX_HP",
     "INTRO_TIME", "TRANSITION_TIME", "TELEPORT_TIME", "DYING_TIME",

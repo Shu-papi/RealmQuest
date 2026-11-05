@@ -1,0 +1,65 @@
+{
+  "sprite": {
+    "sheet": "sheet.png",
+    "frame_width": 48,
+    "frame_height": 48,
+    "anchor": [
+      24,
+      44
+    ],
+    "facing_default": "left"
+  },
+  "animations": {
+    "idle": {
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "durations": [
+        260,
+        220,
+        260,
+        220
+      ],
+      "loop": true
+    },
+    "walk": {
+      "frames": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "durations": [
+        110,
+        110,
+        110,
+        110,
+        110,
+        110
+      ],
+      "loop": true
+    },
+    "attack": {
+      "frames": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "durations": [
+        260,
+        90,
+        140,
+        260
+      ],
+      "loop": false,
+      "hit_frame": 1
+    }
+  },
+  "made_by": "tools/make_berserker_sprites.py"
+}

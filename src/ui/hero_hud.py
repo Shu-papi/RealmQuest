@@ -19,11 +19,17 @@ from .assets import get_font, get_image, nine_slice
 from .hud import StatBar, HEART, DIAMOND, _lighter
 
 try:
-    from skills.classes import BAR_COLORS, DASH_STAMINA
+    from skills import classes as _classes
+    from skills.classes import BAR_COLORS
 except ImportError:          # the UI can still be previewed without the skills package
-    DASH_STAMINA = 25
+    _classes = None
     BAR_COLORS = {"hp": (214, 52, 52), "stamina": (226, 190, 60), "mana": (70, 120, 236),
                   "energy": (236, 128, 40)}
+
+
+def dash_stamina():
+    """Stamina one dash costs (read live: config/characters/hero.toml can change it)."""
+    return getattr(_classes, "DASH_STAMINA", 25) if _classes is not None else 25
 
 BOLT = [
     "....oo..",
@@ -209,7 +215,7 @@ class HeroHUD:
             surface.blit(cost, (rx + SLOT - cost.get_width() - 5, y + SLOT - cost.get_height() - 3))
         # dash
         rx = x + len(slots) * (SLOT + SLOT_GAP)
-        dash_ready = pc.dash_cd <= 0 and pools.can_spend("stamina", DASH_STAMINA)
+        dash_ready = pc.dash_cd <= 0 and pools.can_spend("stamina", dash_stamina())
         self._slot_box(surface, rx, y, dash_ready)
         draw_glyph(surface, "dash", pygame.Rect(rx + 9, y + 9, SLOT - 18, SLOT - 18), BAR_COLORS["stamina"])
         if not dash_ready:

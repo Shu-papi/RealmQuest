@@ -1,0 +1,13 @@
+# ============================================================================================================
+#  RealmQuest  -  SKELETON WARDEN
+#  MINI-BOSS of the Lich King Dungeon, Ashen Pit and Bone Hollow (Bone / Cinder / Hollow Warden), and the
+#  Barrow Warden of the north-road raid: a skeleton warrior, bigger and recoloured.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+size = 1.7                                # How much bigger than a skeleton warrior it is (its art grows in whole pixels).
+tier = "elite"                            # Which tier of config/tiers.toml it uses (health / damage / speed).
+hp_multiplier = 3.0                       # Extra health on top of the tier.

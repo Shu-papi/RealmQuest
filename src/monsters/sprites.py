@@ -107,7 +107,7 @@ class Frame:
 class SpriteSheet:
     """Everything loaded from one monster's asset folder, for one variant."""
 
-    def __init__(self, name, variant="bone"):
+    def __init__(self, name, variant="bone", size=1.0):
         folder = asset_dir(name)
         with open(os.path.join(folder, "sprite.json"), encoding="utf-8") as handle:
             config = json.load(handle)
@@ -117,7 +117,7 @@ class SpriteSheet:
 
         self.name = name
         self.variant = variant
-        self.scale = int(config["scale"])
+        self.scale = max(1, int(round(int(config["scale"]) * size)))   # size > 1: a bigger monster (a mini-boss)
         fw, fh = config["frame_size"]
         self.frame_size = (fw, fh)
         self.anchor = tuple(config["anchor"])
@@ -192,12 +192,13 @@ _sheets = {}
 _warned = set()
 
 
-def get_sheet(name, variant="bone"):
-    """A cached SpriteSheet, or None if the art can't be loaded (monsters then draw shapes)."""
-    key = (name, variant)
+def get_sheet(name, variant="bone", size=1.0):
+    """A cached SpriteSheet, or None if the art can't be loaded (monsters then draw shapes).
+    size scales the pixel art (1.7 = a mini-boss), always by a whole number of screen pixels."""
+    key = (name, variant, round(float(size), 3))
     if key not in _sheets:
         try:
-            _sheets[key] = SpriteSheet(name, variant)
+            _sheets[key] = SpriteSheet(name, variant, size)
         except Exception as error:                                    # noqa: BLE001
             _sheets[key] = None
             if name not in _warned:

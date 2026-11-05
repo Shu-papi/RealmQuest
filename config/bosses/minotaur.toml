@@ -1,0 +1,86 @@
+# ============================================================================================================
+#  RealmQuest  -  THE MINOTAUR
+#  Boss of the Berserker Dungeon (floor 2-3). Arena numbers: [dungeon] at the bottom scales him to the
+#  dungeon (the hero has ~40 HP and a 2-damage sword).
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Minotaur"                         # Shown above his health bar (the dungeon shows 'The Minotaur').
+max_hp = 6000                             # Arena health. In the dungeon it is divided by [dungeon] hp_power.
+intro = "The ground trembles. The Minotaur of the Labyrinth lowers its horns." # Line shown when the arena fight starts.
+death_line = "The Minotaur crashes to the ground. The labyrinth falls silent." # Line shown when he dies.
+loot = ["Horn of the Labyrinth", "Bronze Bracers", "120 Gold"] # Items he drops (arena).
+rock_speed = 250                          # Speed of his thrown rocks (pixels per second).
+rock_damage = 170                         # Damage of one rock.
+stun_damage_mult = 2.0                    # Damage multiplier while he is stunned after crashing into a wall (your window).
+charge_aim_lock = 0.6                     # Share of the charge wind-up after which he stops turning toward you.
+charge_repeat_windup = 0.5                # Shorter wind-up of his second charge in phase 2 (seconds).
+charge_hit_share = 0.85                   # How much of his hit circle hurts you while he charges.
+
+# Phase 1 (until half health): speed, pauses, wind-ups (seconds), sizes and damage of each skill.
+[phase1]
+speed = 80
+idle = 1.2
+recover = 0.5
+charges = 1
+charge_windup = 1.0
+charge_speed = 620
+charge_damage = 85
+stun = 1.3
+slam_windup = 1.1
+slam_radius = 125
+slam_damage = 120
+rocks = 0
+cast_windup = 0.9
+volley = 10
+volley_speed = 230
+volley_damage = 50
+rain_windup = 1.1
+rain_count = 5
+rain_radius = 58
+rain_damage = 35
+leap_windup = 0.55
+leap_time = 0.8
+leap_radius = 100
+leap_damage = 25
+
+# Phase 2 (enraged, below half health).
+[phase2]
+speed = 120
+idle = 0.7
+recover = 0.35
+charges = 2
+charge_windup = 0.75
+charge_speed = 720
+charge_damage = 130
+stun = 1.0
+slam_windup = 0.9
+slam_radius = 150
+slam_damage = 170
+rocks = 8
+cast_windup = 0.7
+volley = 14
+volley_speed = 280
+volley_damage = 85
+rain_windup = 0.9
+rain_count = 8
+rain_radius = 62
+rain_damage = 40
+leap_windup = 0.4
+leap_time = 0.65
+leap_radius = 120
+leap_damage = 35
+
+# In the dungeon: name = his health-bar name, hit_radius = how close a sword swing must be, color = placeholder.
+# hp_power and damage_k are OPTIONAL scale knobs: 1 = the numbers in this file apply exactly as typed (the bar
+# shows max_hp, every attack takes its damage off the hero before his armour). hp_power = 15 means a sword
+# hit of 2 does 30 to him and the bar shows his health / 15; damage_k = 0.5 halves every hit on the hero.
+[dungeon]
+name = "The Minotaur"
+hp_power = 1
+damage_k = 1
+hit_radius = 40
+color = [132, 82, 48]

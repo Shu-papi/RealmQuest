@@ -1,0 +1,43 @@
+# ==========================================================================
+#  RealmQuest  -  SKELETON ACOLYTE
+#  A skeleton (src/monsters/). Stats at tier 'normal'; a tier (config/tiers.toml) multiplies them.
+#  The Lich King's army, the Lich King Dungeon rooms and the north-road night raid all use it.
+#
+#  Change a number and save (no restart). Delete a line and the game uses its built-in default.
+#  A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the player loses.
+# ==========================================================================
+
+# ==========================================================================
+# SKELETON ACOLYTE
+# ==========================================================================
+max_hp = 390                              # Health at tier 'normal' (a tier multiplies this, see [tiers]).
+radius = 14                               # Hit circle (pixels).
+speed = 62.0                              # Walking speed (pixels per second).
+damage = 26                               # Damage of its main attack (tier 'normal').
+xp = 14                                   # Experience it gives.
+gold = [4, 12]                            # Gold dropped: [min, max].
+loot = [["Bone Dust", 0.5], ["Acolyte Orb", 0.25], ["Violet Robe Scrap", 0.4]]  # Drops: [item, chance 0-1] pairs.
+spawn_time = 1.0                          # Seconds it takes to rise from the ground (can't be hurt meanwhile).
+dying_time = 1.25                         # Length of its death animation.
+stagger_time = 0.28                       # How long a hit interrupts it.
+stagger_cooldown = 1.4                    # After a stagger it shrugs hits off this long (no stun-lock).
+strike_time = 0.25                        # Duration of the attack itself.
+recover_time = 0.5                        # Seconds it is open for a counter-attack after attacking.
+poise = false                             # true = hits never interrupt it.
+knockback = 190.0                         # How far a hit pushes it.
+knockback_resist = 0.0                    # 0 = normal, 1 = immovable.
+mend_range = 280                          # Acolyte: heals friends within this distance.
+mend_amount = 14                          # Acolyte: health restored (tier 'normal').
+mend_below = 0.7                          # Acolyte: heals friends below this fraction of their health.
+raise_cap = 4                             # Acolyte: won't raise the dead when this many friends are alive.
+raise_cooldown = 11.0                     # Acolyte: seconds between raising the dead.
+bolt_range = [120, 430]                   # Acolyte: [closest, farthest] distance it fires soul bolts from.
+bolt_speed = 400.0                        # Acolyte: soul bolt speed.
+action_cooldown = 2.4                     # Acolyte: seconds between actions.
+
+
+[windups]   # Acolyte: warning time of each action.
+mend = 0.9
+raise = 1.3
+bolt = 0.55

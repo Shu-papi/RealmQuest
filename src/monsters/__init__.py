@@ -58,7 +58,7 @@ TIERS = {
     "undying": {"hp_scale": 3.0, "damage_scale": 1.3,  "speed_scale": 1.15},
 }
 
-# config/balance.toml overrides everything above: [monsters.<name>] and [tiers.<name>] (see src/balance.py)
+# config/monsters/<name>.toml and config/tiers.toml override everything above (see src/balance.py)
 balance.apply_monsters(MONSTERS, TIERS)
 
 

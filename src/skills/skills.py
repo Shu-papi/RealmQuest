@@ -293,6 +293,11 @@ class Burst(_Effect):
             _ring(surf, X, Y - BODY // 2, rr, (255, 220, 140), int(230 * k), 4, squash=0.75)
 
 
+# Shields soak what monsters deal, not what the hero deals: their size stops growing past this power
+# (a big sword must not make Blade Ward / Arcane Barrier soak hundreds).
+SHIELD_POWER_CAP = 1000          # (no real cap: the hero's health now grows with the sword)
+
+
 class Barrier(_Effect):
     """Arcane Barrier: a bubble on the hero that soaks up `absorb` damage for `duration` s.
     The Game hands it to PlayerCombat.barrier, which spends `absorb` when the hero is hit."""
@@ -346,7 +351,7 @@ class BladeWard(_Effect):
     def __init__(self, x, y, power, color, duration=6.0):
         self.x, self.y = x, y
         self.dmg = max(1, power)
-        self.absorb = self.max_absorb = 6 + 2 * power
+        self.absorb = self.max_absorb = 6 + 2 * min(power, SHIELD_POWER_CAP)
         self.life = self.total = duration
         self.color = color
         self.angle = 0.0
@@ -444,6 +449,7 @@ class Projectile(_Effect):
                     _hit(fx, tg, self.dmg)
                     if self.basic:
                         fx.basic_dealt += self.dmg
+                        fx.basic_hits += 1
                     if not self.pierce:
                         self.done = True
                         return
@@ -576,7 +582,7 @@ def _fireball(fx, x, y, ax, ay, p, d, reach=None):
 
 
 def _arcane_barrier(fx, x, y, ax, ay, p, d, reach=None):
-    shield = Barrier(x, y, 10 + 3 * p, 6.0, d.color)
+    shield = Barrier(x, y, 10 + 3 * min(p, SHIELD_POWER_CAP), 6.0, d.color)
     fx.add(shield)
     fx.barrier = shield
 
@@ -640,6 +646,7 @@ class SkillFX:
         self.hits = 0                         # hits since the Game last read it
         self.lunge = None                     # (dx, dy) when Shield Bash wants the hero to lunge
         self.basic_dealt = 0                  # basic-shot damage since the Game last read it
+        self.basic_hits = 0                   # basic shots that landed since the Game last read it
         self.barrier = None                   # a new Barrier / BladeWard for PlayerCombat.barrier
         self.guards = []                      # (x, y, r) rings that block enemy shots this frame
         self.shake = 0.0
@@ -681,3 +688,34 @@ class SkillFX:
                 X, Y = int(x - cx) - img.get_width() // 2, int(y - cy)
                 surf.blit(sh, (X + 2, Y + 2))
                 surf.blit(img, (X, Y))
+
+
+# ======================================================================================================
+# CONFIG FILES: the [skills] table of config/characters/<class>.toml sets each skill's cost and cooldown.
+# ======================================================================================================
+try:
+    import balance as _balance                              # src/ is on the path
+except ImportError:
+    try:
+        from src import balance as _balance
+    except ImportError:
+        _balance = None
+
+
+def _skills_prop(cls):
+    def get():
+        return {s.id: [s.cost, s.cooldown] for s in CLASS_SKILLS[cls]}
+
+    def put(table):
+        import dataclasses
+        CLASS_SKILLS[cls] = [dataclasses.replace(s, cost=table[s.id][0], cooldown=float(table[s.id][1]))
+                             for s in CLASS_SKILLS[cls]]
+    return _balance.Prop(get, put)
+
+
+if _balance is not None:
+    for _cls in CLASS_SKILLS:
+        _balance.declare("characters", _cls, "", "", None, {"skills": _skills_prop(_cls)},
+                         docs={"skills": "Each skill: [cost, cooldown in seconds]. The cost is paid in the "
+                                         "class's skill resource (mana or energy)."},
+                         partial=True)

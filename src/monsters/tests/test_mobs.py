@@ -3,6 +3,7 @@ Checks the monsters: the mobs self-test (slimes, wild boar, goblin shaman) and t
 goblin_army sheets (goblin general, giant boar, slimes) used by monsters_config.py.
 Run from the repo root:  python -m unittest discover -s src/monsters/tests
 """
+import os as _os; _os.environ["REALMQUEST_BALANCE"] = "none"      # these tests pin the code's DEFAULT numbers, not your config/ tuning
 import contextlib
 import io
 import os

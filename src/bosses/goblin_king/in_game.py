@@ -112,10 +112,22 @@ class GoblinKingEnemy:
         if pc.dead:                       # stand still once the hero has fallen
             return
         self.boss.wake()                  # the fight starts the moment the boss room locks
-        before = (self.boss.x, self.boss.y)
+        bx, by = self.boss.x, self.boss.y
         self.boss.update(dt, _Target(player, pc, dungeon, self.boss))
-        if not dungeon.can_stand(self.x, self.y):     # walls stop his walk and his dash
-            self.boss.x, self.boss.y = before
+        if not dungeon.can_stand(self.x, self.y):     # walls stop his walk and his dash...
+            nx, ny = self.boss.x, self.boss.y
+            fo = self.boss.feet_offset
+            if dungeon.can_stand(nx, by + fo):        # ...but he slides along them
+                self.boss.x, self.boss.y = nx, by
+            elif dungeon.can_stand(bx, ny + fo):
+                self.boss.x, self.boss.y = bx, ny
+            else:
+                self.boss.x, self.boss.y = bx, by
+
+    def refresh_config(self):
+        """The config files changed: new health (same share left), speed, ranges, reach, damage."""
+        self.boss.refresh_config(cfg.IN_GAME)
+        self.damage = cfg.IN_GAME["damage"]["heavy"][12]
 
     def draw(self, surf, cx, cy):
         if not self.dead:

@@ -1,0 +1,35 @@
+# ============================================================================================================
+#  RealmQuest  -  MAGE
+#  A hero class. Its skills are in [skills] at the bottom; numbers every class shares are in hero.toml.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Mage"                             # Shown on the class card and the HUD.
+hp = 90                                   # Base health (levels, armour and quest rewards add to it).
+speed = 1.05                              # Walk speed multiplier (1.0 = normal).
+dmg_bonus = 0                             # Extra damage on every basic attack (on top of hero.toml sword_damage).
+swing_cd = 0.65                           # Seconds between basic attacks (gear Attack Speed and Agility make it shorter).
+weapon = "Arcane Bolt"                    # What the basic attack is called on the HUD.
+energy_on_hit = 0.0                       # Energy gained per basic attack that lands (a swing that hits, an arrow that hits).
+
+# The basic attack: cost (mana per bolt), speed and range (pixels), release (0-1: how far into the attack
+# animation the shot leaves).
+[attack]
+cost = 6
+speed = 560
+range = 560
+release = 0.45
+
+# Resource bars: name = [maximum, refill per second]. Stamina pays for dashes; skills cost mana or energy.
+[bars]
+mana = [120, 9.0]
+stamina = [80, 17.6]
+
+# Each skill: [cost, cooldown in seconds]. The cost is paid in the class's skill resource (mana or energy).
+[skills]
+fireball = [22, 1.6]
+arcane_barrier = [30, 10.0]
+meteor = [70, 25.0]

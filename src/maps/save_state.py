@@ -10,13 +10,14 @@ potions), so combat.py does not need to know about saving or shops.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 try:
-    from .combat import PLAYER_MAX_HP, POTION_START
+    from . import combat as _combat
 except ImportError:
-    from combat import PLAYER_MAX_HP, POTION_START
+    import combat as _combat
 
 from skills import classes as hero_classes      # combat.py put src/ on the import path
 from inventory.gear import Gear, attr_stats, ATTR_IDS, POINTS_PER_LEVEL   # noqa: E402
@@ -24,23 +25,40 @@ from inventory.gear import Gear, attr_stats, ATTR_IDS, POINTS_PER_LEVEL   # noqa
 DEFAULT_HERO_NAME = "Himmel"
 DEFAULT_HERO_CLASS = "warrior"
 
-SAVE_PATH = Path(__file__).resolve().parents[2] / "savegame.json"
+try:
+    import app_paths as _app_paths                                    # src/ is on the path (combat.py)
+except ImportError:                                                   # pragma: no cover
+    from src import app_paths as _app_paths
+# the save: the repo root in development, %APPDATA%/RealmQuest in the built game; the tester uses its own file
+SAVE_PATH = Path(os.environ.get("REALMQUEST_SAVE") or _app_paths.user_dir() / "savegame.json")
 
-ARMOR_HP = 8              # max HP per armor level
+ARMOR_HP = 20             # max HP per armor level
 BOOTS_DASH_FACTOR = 0.75  # dash cooldown multiplier per boots level
 HERB_HEAL = 6             # extra potion healing per herb level
 BONUS_HP = {"hp_charm": 4, "hp_blessing": 6}   # max HP from side-quest rewards (save flags)
 
 # ---- character level ----------------------------------------------------------------
-# XP comes from monsters (their max HP x their tier), mini dungeons, lairs, raids and events.
-# Every level gives max HP; every third level gives +1 sword damage.
-MAX_LEVEL = 20
-HP_PER_LEVEL = 4
+# XP comes from monsters (a share of their max HP x their tier), mini dungeons, lairs, raids and events.
+# Every level gives max HP; every third level gives +1 attack (x combat.BONUS_SCALE).
+# The main dungeons are meant for: Goblin Lv 5-10, Berserker Lv 15-20, the Lich King Lv 20-30.
+MAX_LEVEL = 30
+HP_PER_LEVEL = 12
+XP_BASE = 60                       # XP from level 1 to 2 ...
+XP_GROWTH = 45                     # ... and each next level costs this much more
+XP_CURVE = 2.0                     # ... plus this x (level - 1)^2 (makes the high levels slow)
 LEVEL_XP = [0]                     # LEVEL_XP[n - 1] = total XP needed to reach level n
-for _n in range(1, MAX_LEVEL):
-    LEVEL_XP.append(LEVEL_XP[-1] + 50 + 40 * (_n - 1))
 # the level each main dungeon's portal asks for (see surface_world.DUNGEONS)
-MAIN_MIN_LEVEL = {"goblin": 3, "berserker": 7, "lich": 12}
+MAIN_MIN_LEVEL = {"goblin": 5, "berserker": 15, "lich": 20}
+
+
+def build_level_xp():
+    """(Re)build LEVEL_XP from XP_BASE / XP_GROWTH / XP_CURVE (hero.toml can change them)."""
+    del LEVEL_XP[1:]
+    for n in range(1, MAX_LEVEL):
+        LEVEL_XP.append(LEVEL_XP[-1] + int(XP_BASE + XP_GROWTH * (n - 1) + XP_CURVE * (n - 1) ** 2))
+
+
+build_level_xp()
 
 
 def level_of(xp: int) -> int:
@@ -63,7 +81,7 @@ class SaveState:
     hero_name: str = DEFAULT_HERO_NAME            # chosen on the name screen
     hero_class: str = DEFAULT_HERO_CLASS          # warrior / mage / archer
     gold: int = 0
-    potions: int = POTION_START
+    potions: int = field(default_factory=lambda: _combat.POTION_START)   # (read live: hero.toml)
     sword_lv: int = 0
     armor_lv: int = 0
     boots_lv: int = 0
@@ -89,7 +107,7 @@ class SaveState:
     def base_hp(self) -> int:
         """Max HP of the chosen class before upgrades and levels."""
         return hero_classes.stats(self.hero_class)["hp"] if self.hero_class in hero_classes.CLASS_STATS \
-            else PLAYER_MAX_HP
+            else _combat.PLAYER_MAX_HP
 
     @property
     def max_hp(self) -> int:
@@ -123,6 +141,7 @@ class SaveState:
         return out
 
     def level_damage(self) -> int:
+        """Attack from levels (before combat.BONUS_SCALE): +1 every third level."""
         return (self.level - 1) // 3
 
     @property
@@ -245,3 +264,27 @@ def clean_name(name) -> str:
         return ""
     keep = "".join(ch for ch in name if ch.isalnum() or ch in " '-")
     return " ".join(keep.split())[:NAME_MAX].strip()
+
+
+# ======================================================================================================
+# CONFIG FILE: config/characters/hero.toml also holds these (src/balance.py).
+# ======================================================================================================
+try:
+    import balance as _balance                              # src/ is on the path (combat.py)
+except ImportError:                                         # pragma: no cover
+    _balance = None
+
+if _balance is not None:
+    _balance.declare(
+        "characters", "hero", "", "", globals(),
+        {"hp_per_level": "HP_PER_LEVEL", "armor_upgrade_hp": "ARMOR_HP", "max_level": "MAX_LEVEL",
+         "xp_base": "XP_BASE", "xp_growth": "XP_GROWTH", "xp_curve": "XP_CURVE"},
+        docs={"hp_per_level": "Max health every level gives.",
+              "armor_upgrade_hp": "Max health each Riveted Armor upgrade (shop) gives.",
+              "max_level": "The highest level.",
+              "xp_base": "XP from level 1 to level 2.",
+              "xp_growth": "Each next level costs this much more XP...",
+              "xp_curve": "...plus this x (level - 1) squared (makes the high levels slow)."},
+        partial=True)
+    build_level_xp()
+    _balance.on_reload(build_level_xp)

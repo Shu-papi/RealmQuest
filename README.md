@@ -15,7 +15,23 @@ From the project root:
 ```bash
 python -m pip install pygame-ce
 python run_map.py            # or: python -m src.maps.dungeon_map
+
+python run_map.py --tester   # TESTER MODE: a max-level hero, every portal open, F1 menu (own save file)
 ```
+
+### Building the .exe (Windows)
+
+```
+pip install -r requirements.txt
+build_exe.bat
+```
+
+This makes `dist\RealmQuest\` (`RealmQuest.exe` + `_internal\` + `assets\`, `audio\`, `config\`) and
+`dist\RealmQuest.zip` to share. The build runs its own self-test (`RealmQuest.exe --smoke 600`) and stops if
+it fails. In the built game, saves and `crash.log` go to `%APPDATA%\RealmQuest`; `config\*.toml` next to the
+.exe can still be edited while it runs. Tester mode is off in the build (set `REALMQUEST_DEV=1` to allow it).
+`python tools/balance_report.py` prints the balance tables from the live config.
+
 
 Progress is saved automatically to `savegame.json` in the project root:
 - when you change floors,
@@ -126,8 +142,8 @@ The overworld is now about twice as big (4400 x 3200).
 | Ashen Pit | Deep Forest, north | 8-11 |
 | Bone Hollow | Deep Forest, east | 9-12 |
 
-- **The Deep Forest** (east) is swarming with roaming packs: wild boars at its edge, shadow stalkers and forest wraiths deeper in. Weaker packs (red, blue and green slimes, goblin scouts, bandits) roam the Thornwood and the Southfields. Packs chase you when you get close and come back a while after you wipe them out.
-- **Monster lairs:** six hide tents (Slime Den, Goblin Camp, Bandit Camp, Boar Warren, Stalker Nest, Wraith Barrow). They keep sending out monsters while you're near. Destroy one for XP and gold; it's rebuilt a few minutes later.
+- **The wilds are tiered like the dungeons, with the dungeons' own monsters** (real sprites and AI, the same `config/monsters/` files): **tier 1** near Oakwood and the caves = the Goblin Dungeon's slimes, goblin minions, goblin shamans and wild boars; **tier 2** across the river and at the forest's edge = the Berserker Dungeon's orc warriors, orc shamans (meteors) and treants (roots); **tier 3** deep in the Deep Forest = the Lich's skeletons. Packs chase you when you get close, fight with their dungeon moves, and come back a while after you wipe them out.
+- **Monster lairs:** six hide tents (Slime Den, Goblin Camp, Orc Warcamp, Treant Grove, Bone Pit, Barrow of the Lich). They keep sending out monsters while you're near. Destroy one for XP and gold; it's rebuilt a few minutes later.
 - **World events,** every couple of minutes:
   - **A champion** roams somewhere for a while. Hunt it down for big XP and gold.
   - **A merchant caravan** is attacked on the Kingsroad. Save it for gold and a potion.

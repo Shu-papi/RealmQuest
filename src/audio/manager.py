@@ -22,7 +22,8 @@ from . import sounds
 from .paths import MUSIC_DIR, SFX_DIR
 
 SFX_CHANNELS = 32              # channels for one-shot sounds
-RESERVED = 4                   # 0, 1 = music (two, for crossfades)   2, 3 = looping sounds
+RESERVED = 5                   # 0, 1 = music (two, for crossfades)   2, 3 = looping sounds
+AMBIENCE_CHANNEL = 4           # kept free for the dungeon's ambience bed (maps/sfx.py plays goblin chatter there)
 SCREEN_WIDTH = 960             # x = 0 is the far left, x = SCREEN_WIDTH the far right
 MAX_PAN = 0.75                 # how hard a sound can lean to one side (1 = fully left / right)
 BURST_WINDOW = 0.1             # seconds...

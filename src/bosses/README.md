@@ -84,6 +84,20 @@ Return `False` while the player is invulnerable (dashing, god mode) and nothing 
 this method simply ignores the effect, so nothing breaks. The stand-in player in `dev/arena.py`
 shows one way to do it.
 
+## In the game (dungeons 2 and 3)
+
+The Minotaur is the boss of Dungeon 2 (floor 2-3) and the Lich King the boss of Dungeon 3 (floor 3-3). `in_game.py`
+makes any arena boss look like a dungeon enemy, so `maps/combat.py` treats them like the Goblin King:
+
+- The boss runs in **room coordinates** and is drawn on a copy of the room's part of the screen, so nothing in the boss
+  changes. The hero is converted into the boss's coordinates; every hit goes through `PlayerCombat.hurt`.
+- **Tuning for the dungeon** is `IN_GAME` at the top of `in_game.py`: `hp_power` (a sword hit of 2 does 2 x this) and
+  `damage_k` (every boss / minion hit on the hero is multiplied by it). The shown HP is the real HP divided by `hp_power`.
+- The Lich King's skeletons are added to the room as `MinionEnemy` (the hero can hit them; no XP or loot).
+- "root" (Grasping Hands) and "slow" are `Player.afflict()` in `maps/dungeon_map.py`.
+- **Sound:** `audio.init()` is called once by the game. The Lich King plays his own music (`lich_p1..p3`, the map music steps
+  aside); the Minotaur plays his soundboard (`assets/bosses/minotaur/sfx/`), which follows the SFX slider.
+
 ## The Lich King's fight
 
 The Lich King is the **last boss**, so the fight is built to feel **overwhelming**: a huge health pool

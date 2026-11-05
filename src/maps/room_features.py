@@ -40,6 +40,10 @@ WALK = (FLOOR, PATH)
 SURFACE_IDS = {1: "goblin", 2: "berserker", 3: "lich"}
 
 CENTER_CLEAR = 6          # Encounters spawns monsters within +-3 tiles of a room's centre
+CHECKPOINTS_PER_FLOOR = 3
+CHECKPOINT_LIGHT_DIST = 52    # px: walking this close lights a checkpoint
+CHECKPOINT_USE_DIST = 52      # px: E works this close
+THREAT_ROLES = ("boss", "miniboss", "lair", "guard")   # the checkpoint by the boss: first of these found
 
 
 # --------------------------------------------------------------------------- #
@@ -450,6 +454,28 @@ def _font_sprite(theme):
     return _outline(s)
 
 
+def _checkpoint_sprite(theme, lit):
+    """A checkpoint: a squat stone brazier on a rune step. Unlit = cold grey ash, lit = embers
+    (the flame itself is drawn on top every frame)."""
+    s = _blank(34, 40)
+    pygame.draw.ellipse(s, (0, 0, 0, 100), (1, 31, 32, 9))
+    step = _shade(theme.wall, 0.75)
+    pygame.draw.ellipse(s, step, (2, 26, 30, 11))
+    pygame.draw.ellipse(s, _shade(theme.wall_hi, 0.9), (2, 26, 30, 11), 1)
+    rune = (255, 170, 80) if lit else _shade(theme.wall_hi, 0.7)
+    for k in range(4):
+        pygame.draw.line(s, rune, (8 + k * 6, 31), (10 + k * 6, 29), 1)
+    pygame.draw.rect(s, _shade(theme.wall, 0.9), (12, 16, 10, 14))           # the post
+    pygame.draw.rect(s, _shade(theme.wall_hi, 0.8), (12, 16, 10, 14), 1)
+    pygame.draw.polygon(s, theme.wall, [(4, 8), (30, 8), (25, 17), (9, 17)])   # the bowl
+    pygame.draw.polygon(s, theme.wall_hi, [(4, 8), (30, 8), (25, 17), (9, 17)], 1)
+    pygame.draw.ellipse(s, (70, 40, 30) if lit else (80, 78, 84), (6, 5, 22, 7))
+    if lit:
+        for x in (11, 16, 21):
+            s.fill((255, 150, 60), (x, 7, 3, 2))
+    return _outline(s)
+
+
 def _gate_sprite(theme, vertical, seals):
     """Locked door (iron portcullis + padlock) or boss gate (rune slab with seal sockets).
     vertical = the doorway runs up and down (corridor enters from the side)."""
@@ -525,9 +551,11 @@ class Interactables:
         self.drops = []                 # floor key / boss seals waiting in their rooms
         self.gate = None                # the locked stairs door / boss gate
         self.fonts = []                 # healing fonts in shrine rooms
+        self.checkpoints = []           # where the hero rises after a fall (lit ones only)
         self.keys = 0
         self.seals = 0
         self._place_objectives()
+        self._place_checkpoints()
         self._place_breakables()
         self._place_chests()
         self._place_spikes()
@@ -568,6 +596,98 @@ class Interactables:
         self.gate = dict(cells=cells, kind=kind, vertical=vertical, open=False, t=0.0,
                          x=nx * TILE + TILE // 2, y=ny * TILE + TILE // 2,
                          img=_gate_sprite(d.theme, vertical, kind == "seal"))
+
+    def checkpoint_rooms(self):
+        """The CHECKPOINTS_PER_FLOOR rooms that get a checkpoint, the boss-side one first:
+        [(room, (gx, gy) tile to place it near)]."""
+        d, roles = self.d, self.roles
+        n = len(d.rooms)
+        parent = getattr(d, "parent", None) or [max(0, k - 1) for k in range(n)]
+        last = n - 1
+        threat = next((k for role in THREAT_ROLES for k in range(n) if roles[k] == role), last)
+        near = parent[threat] if threat else 0
+        chain, k = [last], last                     # the main path, start ... exit
+        while k and len(chain) <= n:
+            k = parent[k]
+            chain.append(k)
+        chain.reverse()
+        taken = {near, threat, last, 0}
+        safe = ("shrine", "antechamber")
+        pool = [k for k in chain if k not in taken]
+        pool += [k for k in range(n) if k not in pool and k not in taken and roles[k] != "vault"]
+        picks = []
+        want = CHECKPOINTS_PER_FLOOR - 1
+        for j in range(want):                       # spread along the path
+            if not pool:
+                break
+            idx = min(len(pool) - 1, (j + 1) * len(pool) // (want + 1))
+            k = pool[idx] if pool[idx] not in picks else next((c for c in pool if c not in picks), None)
+            if k is not None:
+                picks.append(k)
+        shrine = next((k for k in pool if roles[k] in safe and k not in picks), None)
+        if shrine is not None and picks and roles[picks[-1]] not in safe:
+            picks[-1] = shrine                      # a quiet room is a better place to rest
+        for extra in [0] + list(range(n)):          # tiny floor: the start room (or any room) will do
+            if len(picks) >= want:
+                break
+            if extra not in picks and extra != near and extra != threat:
+                picks.append(extra)
+        out = []
+        door = getattr(d, "door_of", {}).get((near, threat))
+        r = d.rooms[near]
+        if door and near != threat:
+            nx, ny, ddx, ddy = door                 # just inside the room, by the door to the threat
+            gx, gy = nx, ny
+            for _ in range(3):
+                if r.x < gx - ddx < r.right - 1 and r.y < gy - ddy < r.bottom - 1:
+                    gx, gy = gx - ddx, gy - ddy
+            out.append((near, (gx, gy)))
+        else:
+            out.append((near, (r.centerx, r.centery + 2)))
+        for k in picks:
+            rr = d.rooms[k]
+            out.append((k, (rr.centerx + (3 if k % 2 else -3), rr.centery + 2)))
+        return out
+
+    def _place_checkpoints(self):
+        d = self.d
+        for k, (gx, gy) in self.checkpoint_rooms():
+            r = d.rooms[k]
+            spot = self._spot_near(r, gx, gy, clear=2) or self._spot_near(r, gx, gy, clear=0)
+            if spot is None:
+                continue
+            tx, ty = spot
+            d.solid[ty * MAP_W + tx] = 1
+            self.checkpoints.append(dict(room=k, tx=tx, ty=ty, x=tx * TILE + TILE // 2, y=(ty + 1) * TILE - 2,
+                                         lit=False, boss_side=not self.checkpoints, flash=0.0,
+                                         imgs=(_checkpoint_sprite(d.theme, False), _checkpoint_sprite(d.theme, True))))
+
+    def lit_checkpoints(self):
+        return [c for c in self.checkpoints if c["lit"]]
+
+    def light_checkpoint(self, c, quiet=False):
+        if c["lit"]:
+            return False
+        c["lit"], c["flash"] = True, 0.6
+        if not quiet:
+            self._shards(c["x"], c["y"] - 26, (255, 180, 90), 20)
+            self._sound("checkpoint")
+            self.events.append(("toast", "Checkpoint lit - you will rise here if you fall.", (255, 200, 130)))
+        return True
+
+    def nearest_checkpoint(self, x, y):
+        """The lit checkpoint nearest to (x, y), or None."""
+        lit = self.lit_checkpoints()
+        return min(lit, key=lambda c: (c["x"] - x) ** 2 + (c["y"] - y) ** 2) if lit else None
+
+    def near_lit_checkpoint(self, player):
+        """The lit checkpoint the hero stands at (where they may leave the dungeon), or None."""
+        c = self._near_checkpoint(player)
+        return c if c and c["lit"] else None
+
+    def _near_checkpoint(self, player):
+        return next((c for c in self.checkpoints
+                     if math.hypot(player.x - c["x"], player.y - c["y"]) < CHECKPOINT_USE_DIST), None)
 
     def _flood(self):
         d = self.d
@@ -773,6 +893,14 @@ class Interactables:
         d = self.d
         states = getattr(enc, "state", None) or []
 
+        # checkpoints light when the hero walks past (not in the middle of a locked fight)
+        locked = bool(getattr(enc, "locked", False))
+        for c in self.checkpoints:
+            c["flash"] = max(0.0, c["flash"] - dt)
+            if (not c["lit"] and not locked and not pc.dead
+                    and math.hypot(player.x - c["x"], player.y - c["y"]) < CHECKPOINT_LIGHT_DIST):
+                self.light_checkpoint(c)
+
         # chests open once their room is cleared
         for c in self.chests:
             cleared = c["room"] < len(states) and states[c["room"]] == "cleared"
@@ -931,6 +1059,9 @@ class Interactables:
         f = self._near_font(player)
         if f:
             return "[E]  Drink from the healing font" if not f["used"] else "The font is dry"
+        c = self._near_checkpoint(player)
+        if c and c["lit"]:
+            return "[E]  Rest      [Q]  Leave the dungeon"
         return None
 
     def open_gate(self):
@@ -970,6 +1101,15 @@ class Interactables:
                 self.events.append(("heal",))
                 self.events.append(("toast", "The cool water restores you.", (170, 230, 255)))
             return True
+        c = self._near_checkpoint(player)
+        if c and c["lit"]:
+            c["flash"] = 0.5
+            self._shards(c["x"], c["y"] - 26, (255, 200, 120), 12)
+            self._sound("checkpoint")
+            self.events.append(("rest",))
+            self.events.append(("save",))
+            self.events.append(("toast", "You rest by the fire. Health restored.", (255, 200, 130)))
+            return True
         return False
 
     def objective(self):
@@ -994,6 +1134,8 @@ class Interactables:
         for f in self.fonts:
             if not f["used"]:
                 out.append((f["tx"], f["ty"], "font"))
+        for c in self.checkpoints:
+            out.append((c["tx"], c["ty"], "checkpoint_lit" if c["lit"] else "checkpoint"))
         if self.gate and not self.gate["open"]:
             out.append((self.gate["x"] // TILE, self.gate["y"] // TILE, "gate"))
         return out
@@ -1043,6 +1185,8 @@ class Interactables:
                 out.append((dr["y"] + 4, self._draw_drop(dr)))
         for f in self.fonts:
             out.append((f["y"], self._draw_font(f)))
+        for c in self.checkpoints:
+            out.append((c["y"], self._draw_checkpoint(c)))
         g = self.gate
         if g and not g["open"]:
             out.append((g["y"] + (2 * TILE if g["vertical"] else TILE // 2), self._draw_gate(g)))
@@ -1074,6 +1218,28 @@ class Interactables:
                 for i in range(3):
                     k = (t * 0.8 + i / 3) % 1.0
                     surf.fill((200, 240, 255), (int(x - 6 + i * 6), int(y - 26 - k * 18), 2, 2))
+        return fn
+
+    def _draw_checkpoint(self, c):
+        def fn(surf, cx, cy, t):
+            img = c["imgs"][1 if c["lit"] else 0]
+            x, y = int(c["x"] - cx), int(c["y"] - cy)
+            surf.blit(img, (x - img.get_width() // 2, y - img.get_height() + 4))
+            top = y - img.get_height() + 10
+            if c["lit"]:
+                seed = c["tx"] * 1.7 + c["ty"]
+                big = 1.0 + c["flash"]
+                for i, col in enumerate(((235, 90, 40), (255, 170, 60), (255, 236, 170))):
+                    fl = math.sin(t * 9 + seed + i) * 2
+                    ww, hh = int((10 - i * 3) * big), int((18 - i * 5 + fl) * big)
+                    pygame.draw.ellipse(surf, col, (x - ww // 2, top - hh + 4, ww, hh))
+                for i in range(3):                  # rising sparks
+                    k = (t * 0.9 + i / 3 + seed) % 1.0
+                    surf.fill((255, 210, 120), (int(x - 4 + i * 4 + math.sin(t * 3 + i) * 2),
+                                                int(top - 10 - k * 24), 2, 2))
+            else:
+                k = 0.5 + 0.5 * math.sin(t * 2 + c["tx"])     # a faint wisp: "come light me"
+                surf.fill((170, 170, 180), (x - 1, int(top - 4 - k * 6), 2, 2))
         return fn
 
     def _draw_gate(self, g):
@@ -1178,6 +1344,10 @@ class Interactables:
         for f in self.fonts:
             if not f["used"]:
                 out.append((f["x"] - cx, f["y"] - 20 - cy, glow(64, (90, 190, 255), 0.55)))
+        for c in self.checkpoints:
+            if c["lit"]:
+                k = round(0.55 + 0.1 * math.sin(self.t * 7 + c["tx"]) + 0.3 * c["flash"], 1)
+                out.append((c["x"] - cx, c["y"] - 34 - cy, glow(90, (255, 150, 70), min(0.9, k))))
         g = self.gate
         if g and not g["open"] and g["kind"] == "seal":
             out.append((g["x"] - cx, g["y"] - 14 - cy, glow(60, (170, 110, 255), round(0.2 + 0.12 * self.seals, 2))))

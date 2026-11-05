@@ -104,7 +104,7 @@ HEAVY = {
     "frames": list(range(0, 18)),
     "fps": 12,
     "once": True,
-    "hits": {12: (120, 100, 120)},  # overhead slam, 120 degree cone
+    "hits": {12: (170, 100, 120)},  # overhead slam, 120 degree cone
     "dash": (5, 9, 220),           # rush forward
 }
 
@@ -113,8 +113,8 @@ SPECIAL = {
     "frames": list(range(0, 21)),
     "fps": 12,
     "once": True,
-    "hits": {5: (170, 20, 360),    # tornado spin (all around him)
-             12: (150, 120, 120)},  # ground slam, 120 degree cone
+    "hits": {5: (250, 20, 360),    # tornado spin (all around him)
+             12: (230, 120, 120)},  # ground slam, 120 degree cone
     "dash": (7, 10, 260),          # jump toward the player
 }
 # Sounds (assets/sfx/, names from src/maps/sfx.py FILE_SOUNDS): attack -> {frame: sound}.
@@ -137,3 +137,83 @@ IN_GAME = {
     "damage": {"heavy": {12: 7},              # overhead slam
                "special": {5: 4, 12: 8}},     # tornado spin, ground slam
 }
+
+
+# ======================================================================================================
+# CONFIG FILE: config/bosses/goblin_king.toml sets the numbers above (src/balance.py).
+# ======================================================================================================
+try:
+    import balance as _balance                              # src/ is on the path
+except ImportError:
+    try:
+        from src import balance as _balance
+    except ImportError:                                     # standalone demo (no src/ on the path): defaults
+        _balance = None
+
+_DAMAGE = {"slam_damage": ("heavy", 12), "spin_damage": ("special", 5), "ground_slam_damage": ("special", 12)}
+_DUNGEON = ("max_hp", "speed", "dist_k", "base_scale")
+
+
+def _get_dungeon():
+    out = {k: IN_GAME[k] for k in _DUNGEON}
+    out.update({k: IN_GAME["damage"][a][f] for k, (a, f) in _DAMAGE.items()})
+    return out
+
+
+_REACH = {"slam_reach": ("heavy", HEAVY, 12), "spin_reach": ("special", SPECIAL, 5),
+          "ground_slam_reach": ("special", SPECIAL, 12)}
+
+
+def _reach_prop(key):
+    """A config line for one hit's reach: the first number of its (reach, damage, arc) tuple."""
+    _, anim, frame = _REACH[key]
+
+    def get():
+        return anim["hits"][frame][0]
+
+    def put(v):
+        _, d, arc = anim["hits"][frame]
+        anim["hits"][frame] = (v, d, arc)
+    return _balance.Prop(get, put)
+
+
+def _set_dungeon(table):
+    for k in _DUNGEON:
+        IN_GAME[k] = table[k]
+    for k, (a, f) in _DAMAGE.items():
+        IN_GAME["damage"][a][f] = table[k]
+
+
+if _balance is not None:
+    _balance.declare(
+        "bosses", "goblin_king", "VALDUR, THE GOBLIN KING",
+        "Boss of the Goblin Dungeon (floor 1-3). Ranges are in arena pixels: in the dungeon they are x [dungeon] dist_k.",
+        globals(),
+        {"aggro_range": "AGGRO_RANGE", "heavy_trigger_range": "HEAVY_TRIGGER_RANGE",
+         "special_trigger_range": "SPECIAL_TRIGGER_RANGE", "heavy_cooldown": "HEAVY_COOLDOWN",
+         "special_cooldown": "SPECIAL_COOLDOWN", "special_cooldown_enraged": "SPECIAL_COOLDOWN_ENRAGED",
+         "enrage_hp_fraction": "ENRAGE_HP_FRACTION", "start_heavy_cooldown": "START_HEAVY_COOLDOWN",
+         "start_special_cooldown": "START_SPECIAL_COOLDOWN", "phase2_hp_fraction": "PHASE2_HP_FRACTION",
+         "summon_time": "SUMMON_TIME", "phase2_speed_k": "PHASE2_SPEED_K", "phase2_summons": "PHASE2_SUMMONS",
+         "summon_ring": "SUMMON_RING",
+         **{k: _reach_prop(k) for k in _REACH},
+         "dungeon": _balance.Prop(_get_dungeon, _set_dungeon)},
+        docs={"aggro_range": "He wakes when the hero comes this close.",
+              "heavy_trigger_range": "He uses Berserker Rush (overhead slam) when the hero is this close.",
+              "special_trigger_range": "He uses Critical Cleave (spin + slam) when the hero is this close.",
+              "heavy_cooldown": "Seconds between Berserker Rushes.",
+              "special_cooldown": "Seconds between Critical Cleaves.",
+              "special_cooldown_enraged": "...when he is below enrage_hp_fraction of his health.",
+              "enrage_hp_fraction": "Below this share of his health he cleaves more often.",
+              "start_heavy_cooldown": "Seconds before his first Berserker Rush.",
+              "start_special_cooldown": "Seconds before his first Critical Cleave.",
+              "phase2_hp_fraction": "At this share of his health he roars and calls his minions (once).",
+              "summon_time": "Seconds he roars (can't be hurt meanwhile).",
+              "phase2_speed_k": "His walk speed x this in phase 2.",
+              "phase2_summons": "Who comes: \"minion\", \"shaman\", \"slime\", \"boar\" or \"extra\" (a random one).",
+              "summon_ring": "How far from him they appear (pixels).",
+              "slam_reach": "How far Berserker Rush's overhead slam reaches (arena px, x dist_k in the dungeon).",
+              "spin_reach": "How far Critical Cleave's tornado spin reaches, all around him.",
+              "ground_slam_reach": "How far Critical Cleave's ground slam reaches.",
+              "dungeon": "In the dungeon: max_hp, speed (px/s), dist_k (ranges x this), base_scale (sprite size), "
+                         "and the damage of his slam, his tornado spin and his ground slam."})

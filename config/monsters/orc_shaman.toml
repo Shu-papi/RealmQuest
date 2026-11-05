@@ -1,0 +1,20 @@
+# ============================================================================================================
+#  RealmQuest  -  ORC SHAMAN
+#  Berserker Dungeon regular: keeps its distance and calls down meteors.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Orc Shaman"                       # Name shown on its health bar.
+hp = 480                                  # Health (the hero's sword does sword_damage + gear per hit, see hero.toml).
+speed = 66                                # Walking speed (pixels per second).
+damage = 18                               # Health the hero loses per hit (before armour).
+color = [130, 60, 50]                     # Placeholder colour (only used if the sprite can't load): [red, green, blue].
+radius = 14                               # Hit circle (pixels). Bigger = easier to hit.
+meteor_cooldown = 3.0                     # Seconds between meteors.
+meteor_fall_time = 0.9                    # Seconds from the red warning circle to the impact (time to step out).
+meteor_radius = 46                        # Size of the impact circle (pixels).
+meteor_damage = 30                        # Health lost to a meteor.
+cast_range = 340                          # It casts when the hero is this close (pixels).

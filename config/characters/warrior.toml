@@ -1,0 +1,27 @@
+# ============================================================================================================
+#  RealmQuest  -  WARRIOR
+#  A hero class. Its skills are in [skills] at the bottom; numbers every class shares are in hero.toml.
+#
+#  Change a number and save (no restart). Delete a line (or this file) and the game uses its built-in
+#  default. A mistake never crashes the game: the bad line is ignored and a warning is printed in the console.
+#  Times are in SECONDS, distances in PIXELS, "damage" is the health the hero loses.
+# ============================================================================================================
+
+name = "Warrior"                          # Shown on the class card and the HUD.
+hp = 120                                  # Base health (levels, armour and quest rewards add to it).
+speed = 1.0                               # Walk speed multiplier (1.0 = normal).
+dmg_bonus = 1                             # Extra damage on every basic attack (on top of hero.toml sword_damage).
+swing_cd = 0.55                           # Seconds between basic attacks (gear Attack Speed and Agility make it shorter).
+weapon = "Sword"                          # What the basic attack is called on the HUD.
+energy_on_hit = 8.0                       # Energy gained per basic attack that lands (a swing that hits, an arrow that hits).
+
+# Resource bars: name = [maximum, refill per second]. Stamina pays for dashes; skills cost mana or energy.
+[bars]
+stamina = [100, 19.2]
+energy = [100, 4.0]
+
+# Each skill: [cost, cooldown in seconds]. The cost is paid in the class's skill resource (mana or energy).
+[skills]
+blade_ward = [30, 9.0]
+shield_bash = [25, 6.0]
+earthsplitter = [60, 25.0]

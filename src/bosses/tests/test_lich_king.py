@@ -1,4 +1,5 @@
 """Run from the repo root:  python -m unittest discover -s src/bosses/tests"""
+import os as _os; _os.environ["REALMQUEST_BALANCE"] = "none"      # these tests pin the code's DEFAULT numbers, not your config/ tuning
 import unittest
 
 import math
@@ -17,7 +18,7 @@ except ImportError:
     import pygame
 
 from bosses import LichKing
-from bosses.lich_king.boss import PHASE_STATS
+from bosses.lich_king.boss import DRAIN_DAMAGE, PHASE_STATS
 from bosses.lich_king.minions import Skeleton
 from bosses.dev.arena import Game, empty_input, BOUNDS
 
@@ -97,7 +98,7 @@ class TestLichKing(unittest.TestCase):
         player = StubPlayer(x=300, y=450)
         boss._begin_attack("drain", player, BOUNDS)
         advance(boss, player, boss.windup_time + 0.1)
-        self.assertEqual(player.damage_taken, 18)
+        self.assertEqual(player.damage_taken, DRAIN_DAMAGE)       # config/bosses/lich_king.toml sets it
         self.assertEqual(boss.hp, hp_before + PHASE_STATS[1]["drain_heal"])
 
     def test_drain_circle_misses_if_player_moves(self):

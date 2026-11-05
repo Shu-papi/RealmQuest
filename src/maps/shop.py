@@ -19,9 +19,9 @@ import math
 import pygame
 
 try:
-    from .combat import POTION_MAX
+    from . import combat as _combat       # POTION_MAX is read live (the config file can change it)
 except ImportError:                       # running from inside src/maps
-    from combat import POTION_MAX
+    import combat as _combat
 
 from inventory.gear import Item, shop_stock, format_stat, STAT_ORDER     # combat.py put src/ on the path
 from ui.gear_icons import item_icon
@@ -100,7 +100,7 @@ class ShopMenu:
         if "attr" in it:
             lv = self.level(it)
             return it["prices"][lv] if lv < len(it["prices"]) else None
-        if it["id"] == "potion" and self.pc.potions >= POTION_MAX:
+        if it["id"] == "potion" and self.pc.potions >= _combat.POTION_MAX:
             return None
         return it["price"]
 
@@ -241,7 +241,7 @@ class ShopMenu:
                     c = (255, 214, 90) if k < lv else (60, 56, 64)
                     pygame.draw.rect(surf, c, (row.x + 330 + k * 18, row.y + 14, 12, 12), border_radius=3)
             elif it["id"] == "potion":
-                surf.blit(self.f_small.render("owned %d / %d" % (self.pc.potions, POTION_MAX), True,
+                surf.blit(self.f_small.render("owned %d / %d" % (self.pc.potions, _combat.POTION_MAX), True,
                                               (200, 160, 170)), (row.x + 330, row.y + 12))
             if cost is None:
                 ptxt = self.f_item.render("MAX" if "attr" in it else "FULL", True, (150, 150, 150))
