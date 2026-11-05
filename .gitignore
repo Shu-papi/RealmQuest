@@ -5,3 +5,5 @@ venv/
 .env
 # the game writes the player's progress here
 savegame.json
+# screenshots from `python src/monsters/mobs.py --test`
+test_output/
